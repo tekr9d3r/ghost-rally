@@ -630,17 +630,19 @@ export class Race extends Phaser.Scene {
     this.finishedRun = { ghost, res: null };
     void (async () => {
       let res: FinishResponse | null = null;
+      let submitError: string | null = null;
       try {
         res = await submitFinish({ arena: this.params.arena as 'post' | 'daily', timeMs, ghost });
       } catch (e) {
+        submitError = e instanceof Error ? e.message : 'Could not save your time';
         console.error('finish submit failed', e);
       }
       if (this.finishedRun?.ghost === ghost) this.finishedRun = { ghost, res };
-      this.time.delayedCall(400, () => this.showResults(timeMs, res));
+      this.time.delayedCall(400, () => this.showResults(timeMs, res, submitError));
     })();
   }
 
-  private showResults(timeMs: number, res: FinishResponse | null): void {
+  private showResults(timeMs: number, res: FinishResponse | null, submitError: string | null = null): void {
     const username = this.params.init.username;
 
     const title = res?.tookRecord ? '👑 TRACK RECORD!' : res?.newPB ? '⚡ NEW PERSONAL BEST!' : '🏁 FINISH!';
@@ -662,6 +664,8 @@ export class Race extends Phaser.Scene {
       if (res.practice) lines.push({ text: 'your own track — practice pay only', color: PALETTE.textDim });
     } else if (!username) {
       lines.push({ text: 'log in to save times & earn RP', color: PALETTE.textDim });
+    } else if (submitError) {
+      lines.push({ text: `⚠ time not saved: ${submitError}`, color: PALETTE.textBad });
     }
 
     const spec: PanelSpec = {

@@ -22,7 +22,8 @@ export const FINISH_PAD = 180;
 export const GHOST_FPS = 30;
 /** Longest replay we accept (5 minutes at GHOST_FPS, 3 numbers per frame). */
 export const MAX_GHOST_NUMBERS = 5 * 60 * GHOST_FPS * 3;
-export const MIN_TIME_MS = 3000;
+/** Anti-cheat floor: even the shortest legal track can't be finished this fast. */
+export const MIN_TIME_MS = 1000;
 
 export const trackLength = (nodeCount: number, dx: number): number => (nodeCount - 1) * dx;
 export const finishX = (nodeCount: number, dx: number): number =>
