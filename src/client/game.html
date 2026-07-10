@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, width=device-width, height=device-height, user-scalable=0, viewport-fit=cover"
+    />
+    <link rel="stylesheet" type="text/css" href="game.css" />
+    <title>Ghost Rally</title>
+  </head>
+  <body>
+    <div id="game-container"></div>
+
+    <div id="publish-modal">
+      <div class="modal-card">
+        <h2>🚩 Publish your track</h2>
+        <p id="publish-sub"></p>
+        <input id="publish-name" type="text" placeholder="Name your track…" autocomplete="off" />
+        <div class="modal-buttons">
+          <button id="publish-cancel" class="btn-secondary">Cancel</button>
+          <button id="publish-ok" class="btn-primary">Publish as a post</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="busy"></div>
+
+    <script type="module" src="game.ts"></script>
+  </body>
+</html>

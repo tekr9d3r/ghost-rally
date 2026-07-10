@@ -1,0 +1,296 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Trebuchet MS', 'Segoe UI', Verdana, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, #131f4d 0%, #1b2a5e 30%, #53417e 62%, #c96f4a 88%, #d97e54 100%);
+  overflow: hidden;
+}
+
+/* ---- sky ---- */
+.star {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0.7;
+  animation: twinkle 2.6s ease-in-out infinite alternate;
+}
+.s1 { left: 8%; top: 10%; }
+.s2 { left: 22%; top: 22%; animation-delay: 0.7s; }
+.s3 { left: 41%; top: 8%; animation-delay: 1.3s; width: 2px; height: 2px; }
+.s4 { left: 63%; top: 16%; animation-delay: 0.4s; width: 2px; height: 2px; }
+.s5 { left: 87%; top: 9%; animation-delay: 1s; }
+.s6 { left: 74%; top: 30%; animation-delay: 1.8s; width: 2px; height: 2px; }
+
+@keyframes twinkle {
+  from { opacity: 0.15; transform: scale(0.8); }
+  to { opacity: 0.9; transform: scale(1.2); }
+}
+
+.sun {
+  position: absolute;
+  right: 12%;
+  top: 16%;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffe3a0 0%, #ffd98a 35%, rgba(255, 217, 138, 0) 70%);
+}
+
+.hill {
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  height: 34%;
+  border-radius: 48% 52% 0 0 / 100% 80% 0 0;
+}
+.hill-back {
+  background: #3a3568;
+  bottom: 20%;
+  height: 26%;
+  transform: rotate(-1.5deg);
+  animation: drift 14s ease-in-out infinite alternate;
+}
+.hill-front {
+  background: #2c2a52;
+  bottom: 16%;
+  animation: drift 18s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes drift {
+  from { transform: translateX(-14px); }
+  to { transform: translateX(14px); }
+}
+
+/* ---- ground ---- */
+.ground {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 22%;
+}
+.grass {
+  height: 9px;
+  background: #6fc24b;
+  border-bottom: 4px solid #4e9636;
+}
+.dirt {
+  position: absolute;
+  inset: 9px 0 0 0;
+  background: linear-gradient(180deg, #6b4a35 0%, #54392a 55%, #462f22 100%);
+}
+
+/* ---- the chase ---- */
+.convoy {
+  position: absolute;
+  bottom: calc(22% - 10px);
+  left: 0;
+  width: 260px;
+  height: 80px;
+  animation: drive 10s linear infinite;
+  will-change: transform;
+}
+
+@keyframes drive {
+  from { transform: translateX(-300px); }
+  to { transform: translateX(calc(100vw + 80px)); }
+}
+
+.car {
+  position: absolute;
+  bottom: 0;
+}
+
+.car.buggy {
+  left: 0;
+  animation: bounce 0.5s ease-in-out infinite alternate;
+}
+
+.car.ghost {
+  left: 150px;
+  animation: hover 1.6s ease-in-out infinite alternate;
+  opacity: 0.75;
+  filter: drop-shadow(0 0 14px rgba(255, 209, 102, 0.9));
+}
+
+.crown {
+  position: absolute;
+  top: -22px;
+  left: 44px;
+  font-size: 18px;
+  animation: hover 1.6s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes bounce {
+  from { transform: translateY(0); }
+  to { transform: translateY(-3px); }
+}
+
+@keyframes hover {
+  from { transform: translateY(-2px); }
+  to { transform: translateY(-10px); }
+}
+
+/* buggy colors */
+.buggy .c-body { fill: #e8543f; }
+.buggy .c-skirt { fill: #b93c2b; }
+.buggy .c-cage { fill: #2e3440; stroke: #2e3440; }
+.buggy .c-helmet { fill: #f4f1e8; }
+.buggy .c-visor { fill: #3ec6c9; }
+.buggy .c-stripe { fill: rgba(255, 255, 255, 0.85); }
+.buggy .c-light { fill: #ffe08a; }
+.buggy .w-tire { fill: #22252b; }
+.buggy .w-rim { fill: #c9cdd6; }
+.buggy .w-spoke { stroke: #9aa0ad; stroke-width: 3; }
+
+/* ghost: translucent gold, flickering */
+.ghost .c-body,
+.ghost .c-skirt,
+.ghost .c-helmet,
+.ghost .c-visor {
+  fill: #ffd166;
+}
+.ghost .c-cage { fill: #ffdf8f; stroke: #ffdf8f; }
+.ghost .w-tire { fill: #ffd166; }
+.ghost .w-rim { fill: #fff3cf; }
+.ghost .w-spoke { stroke: #fff3cf; stroke-width: 3; }
+.ghost svg {
+  animation: flicker 2.2s ease-in-out infinite;
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 0.95; }
+  46% { opacity: 0.9; }
+  50% { opacity: 0.45; }
+  54% { opacity: 0.9; }
+}
+
+/* spinning wheels */
+.wheel {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: spin 0.45s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* dust puffs behind the buggy */
+.dust {
+  position: absolute;
+  bottom: 2px;
+  left: -8px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(214, 191, 160, 0.55);
+  animation: puff 0.9s ease-out infinite;
+}
+.dust.d2 { animation-delay: 0.3s; width: 9px; height: 9px; }
+.dust.d3 { animation-delay: 0.6s; width: 7px; height: 7px; }
+
+@keyframes puff {
+  from { transform: translate(0, 0) scale(0.6); opacity: 0.7; }
+  to { transform: translate(-30px, -16px) scale(1.6); opacity: 0; }
+}
+
+/* ---- copy & CTA ---- */
+.card {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  text-align: center;
+  width: min(92%, 460px);
+}
+
+.kicker {
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 4px;
+  color: #ffd166;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  margin-bottom: 6px;
+}
+
+.headline {
+  font-size: clamp(24px, 6vw, 38px);
+  font-style: italic;
+  color: #ffffff;
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.5);
+  margin-bottom: 18px;
+  line-height: 1.12;
+}
+
+/* the published track's actual elevation profile */
+.track-preview {
+  display: none;
+  margin: 0 auto 16px;
+  width: min(100%, 430px);
+}
+.track-preview.visible {
+  display: block;
+}
+.track-preview svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.35));
+}
+
+.cta {
+  font-family: inherit;
+  font-size: clamp(17px, 4.5vw, 22px);
+  font-weight: bold;
+  color: #1a1200;
+  background: linear-gradient(180deg, #ffc93c 0%, #ffa62b 100%);
+  border: none;
+  border-radius: 18px;
+  padding: 16px 46px;
+  cursor: pointer;
+  box-shadow:
+    0 6px 0 #b86e12,
+    0 16px 32px rgba(0, 0, 0, 0.45);
+  transition: transform 0.08s ease;
+  animation: pulse 2.2s ease-in-out infinite;
+}
+
+.cta:active {
+  transform: translateY(4px);
+  box-shadow:
+    0 2px 0 #b86e12,
+    0 8px 18px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.sub {
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: bold;
+  color: rgba(232, 236, 250, 0.8);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
