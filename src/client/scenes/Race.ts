@@ -59,6 +59,11 @@ export class Race extends Phaser.Scene {
   private recAcc = 0;
   private physAcc = 0;
   private frames: number[] = [];
+  /** The completed run of this attempt, so ANY restart path (R key, ✕→retry) updates the ghosts. */
+  private finishedRun: {
+    ghost: { timeMs: number; fps: number; frames: number[] };
+    res: FinishResponse | null;
+  } | null = null;
 
   private throttle = false;
   private brake = false;
@@ -92,6 +97,7 @@ export class Race extends Phaser.Scene {
     this.recAcc = 0;
     this.physAcc = 0;
     this.frames = [];
+    this.finishedRun = null;
     this.ghostRigs = [];
     this.pads = [];
     this.throttle = false;
@@ -621,6 +627,7 @@ export class Race extends Phaser.Scene {
       return;
     }
 
+    this.finishedRun = { ghost, res: null };
     void (async () => {
       let res: FinishResponse | null = null;
       try {
@@ -628,15 +635,12 @@ export class Race extends Phaser.Scene {
       } catch (e) {
         console.error('finish submit failed', e);
       }
-      this.time.delayedCall(400, () => this.showResults(timeMs, ghost, res));
+      if (this.finishedRun?.ghost === ghost) this.finishedRun = { ghost, res };
+      this.time.delayedCall(400, () => this.showResults(timeMs, res));
     })();
   }
 
-  private showResults(
-    timeMs: number,
-    ghost: { timeMs: number; fps: number; frames: number[] },
-    res: FinishResponse | null
-  ): void {
+  private showResults(timeMs: number, res: FinishResponse | null): void {
     const username = this.params.init.username;
 
     const title = res?.tookRecord ? '👑 TRACK RECORD!' : res?.newPB ? '⚡ NEW PERSONAL BEST!' : '🏁 FINISH!';
@@ -668,10 +672,7 @@ export class Race extends Phaser.Scene {
       buttons: [
         {
           label: '↻  RETRY',
-          onClick: () => {
-            this.applyNewGhost(ghost, res);
-            this.restart();
-          },
+          onClick: () => this.restart(),
         },
         { label: '🎲  RACE ANOTHER TRACK', onClick: () => void this.gotoNext() },
         { label: '🏠  MENU', style: 'dim', onClick: () => this.exitToMenu() },
@@ -750,10 +751,43 @@ export class Race extends Phaser.Scene {
   }
 
   private restart(): void {
+    this.consumeFinishedRun();
     engineStop();
     this.matter.world.engine.timing.timeScale = 1;
     this.hud()?.clearPanel();
     this.scene.restart(this.params);
+  }
+
+  /** Fold the just-finished run into the ghost lineup, however the restart was triggered. */
+  private consumeFinishedRun(): void {
+    const run = this.finishedRun;
+    this.finishedRun = null;
+    if (!run) return;
+    let res = run.res;
+    if (!res) {
+      // Server hasn't answered yet (e.g. R pressed instantly) — judge the run
+      // locally; the server remains the source of truth on the next full load.
+      const user = this.params.init.username ?? 'you';
+      const ghosts = this.params.ghosts;
+      const myPrev =
+        ghosts?.mine?.user === user
+          ? ghosts.mine.timeMs
+          : (ghosts?.top.find((t) => t.user === user)?.timeMs ?? null);
+      const newPB = myPrev === null || run.ghost.timeMs < myPrev;
+      const best = ghosts?.top[0]?.timeMs ?? null;
+      const tookRecord = newPB && (best === null || run.ghost.timeMs < best);
+      res = {
+        rpEarned: 0,
+        newPB,
+        tookRecord,
+        dethroned: null,
+        recordMs: tookRecord ? run.ghost.timeMs : (best ?? run.ghost.timeMs),
+        streak: 0,
+        multiplier: 1,
+        practice: false,
+      };
+    }
+    this.applyNewGhost(run.ghost, res);
   }
 
   private exitToMenu(): void {
