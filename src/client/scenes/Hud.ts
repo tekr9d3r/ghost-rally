@@ -33,6 +33,8 @@ export type PanelSpec = {
   big?: string;
   lines: { text: string; color: string }[];
   buttons: PanelButtonSpec[];
+  /** Compact side-by-side buttons (share/brag/join) above the main stack. */
+  social?: PanelButtonSpec[];
 };
 
 export class Hud extends Phaser.Scene {
@@ -145,7 +147,7 @@ export class Hud extends Phaser.Scene {
     const h = this.scale.height;
     const s = Phaser.Math.Clamp(Math.min(w / 640, h / 640), 0.72, 1.2);
     const pw = Math.min(430 * s, w * 0.92);
-    const ph = Math.min(430 * s, h * 0.86);
+    const ph = Math.min((spec.social?.length ? 490 : 430) * s, h * 0.86);
 
     const dim = this.add
       .rectangle(w / 2, h / 2, w * 2, h * 2, 0x060a14, 0.5)
@@ -167,6 +169,29 @@ export class Hud extends Phaser.Scene {
 
     const bw = pw * 0.8;
     const n = spec.buttons.length;
+
+    // social row sits above the main button stack
+    if (spec.social?.length) {
+      const social = spec.social;
+      const rowY = ph / 2 - (44 + n * 56) * s;
+      const gap = 8 * s;
+      const sw = (bw - gap * (social.length - 1)) / social.length;
+      social.forEach((b, i) => {
+        const x = -bw / 2 + sw / 2 + i * (sw + gap);
+        const btn = makeButton(
+          this,
+          x,
+          rowY,
+          sw,
+          40 * s,
+          b.label,
+          () => b.onClick(),
+          { color: PALETTE.uiPanelLight, textColor: '#ffffff', fontSize: 12.5 * s }
+        );
+        panel.add(btn.container);
+      });
+    }
+
     spec.buttons.forEach((b, i) => {
       const fromBottom = n - 1 - i;
       const y = ph / 2 - (44 + fromBottom * 56) * s;

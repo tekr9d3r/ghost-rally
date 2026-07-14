@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
-import { navigateTo } from '@devvit/web/client';
+import { navigateTo, showShareSheet } from '@devvit/web/client';
+import { track as trackEvent } from '../analytics';
 import type { GhostsResponse, InitResponse, Track } from '../../shared/types';
 import { dailyRallyNumber, formatMs, generateDailyTrack } from '../../shared/track';
 import { addBackground } from '../bg';
@@ -84,21 +85,32 @@ export class Menu extends Phaser.Scene {
       makeChip(this, cx, heroY + 62 * s, line, 13 * s);
     }
 
-    // --- Secondary actions: three clear button cards ---
+    // --- Secondary actions: clear button cards ---
     const rowY = h * 0.72;
     const links: { icon: string; label: string; cb: () => void }[] = [
       {
         icon: '🎲',
-        label: isTrack ? 'NEXT TRACK' : 'TRACKS',
+        label: isTrack ? 'NEXT' : 'TRACKS',
         cb: () => void this.gotoNextTrack(),
       },
-      { icon: '🛠', label: 'BUILD', cb: () => this.scene.start('Editor', { init: this.initData }) },
+      {
+        icon: '🛠',
+        label: 'BUILD',
+        cb: () => {
+          trackEvent('editor_open', this.initData.kind);
+          this.scene.start('Editor', { init: this.initData });
+        },
+      },
       { icon: '🏆', label: 'RANKS', cb: () => void this.showLeaderboard() },
     ];
-    const bwCard = Math.min(118 * s, (w * 0.9) / 3.2);
-    const spacing = bwCard + 14 * s;
+    if (isTrack) {
+      links.push({ icon: '📣', label: 'SHARE', cb: () => this.shareTrack() });
+    }
+    const nCards = links.length;
+    const bwCard = Math.min(118 * s, (w * 0.92) / (nCards + 0.2));
+    const spacing = bwCard + 12 * s;
     links.forEach((l, i) => {
-      this.miniButton(cx + (i - 1) * spacing, rowY, bwCard, 78 * s, l.icon, l.label, s, l.cb);
+      this.miniButton(cx + (i - (nCards - 1) / 2) * spacing, rowY, bwCard, 78 * s, l.icon, l.label, s, l.cb);
     });
 
     // --- Personal corner chip (only if there's something to show) ---
@@ -214,7 +226,22 @@ export class Menu extends Phaser.Scene {
     this.scene.start('Race', { track, arena: 'daily', ghosts, init: this.initData });
   }
 
+  private shareTrack(): void {
+    trackEvent('share', 'menu');
+    const t = this.initData.track;
+    const rec = this.initData.record;
+    const challenge = rec ? `beat ${formatMs(rec.timeMs)} on` : 'race';
+    void showShareSheet({
+      title: 'Ghost Rally',
+      text: `Think you can ${challenge} ${t?.name ?? 'this track'}? 👻🏁`,
+    }).then(
+      () => toast(this, 'Challenge shared! 📣', PALETTE.textGood),
+      () => toast(this, 'Could not open share sheet', PALETTE.textBad)
+    );
+  }
+
   private async gotoNextTrack(): Promise<void> {
+    trackEvent('next_track', 'menu');
     try {
       const next = await fetchNextTrack();
       if (next.url) {
@@ -266,9 +293,20 @@ export class Menu extends Phaser.Scene {
     };
     renderRows(['Loading…']);
 
+    trackEvent('leaderboard_open', this.initData.kind);
     try {
       const lb = await fetchLeaderboard();
       const tabs: { label: string; lines: string[] }[] = [
+        ...(lb.track
+          ? [
+              {
+                label: 'TRACK',
+                lines: lb.track.length
+                  ? lb.track.map((r) => `${r.rank}. u/${r.member} — ${formatMs(r.score)}`)
+                  : ['No times on this track yet.'],
+              },
+            ]
+          : []),
         {
           label: 'TODAY',
           lines: lb.daily.length
@@ -290,6 +328,7 @@ export class Menu extends Phaser.Scene {
       ];
       const meLine = (): string => {
         const parts: string[] = [];
+        if (lb.me.trackRank) parts.push(`track #${lb.me.trackRank}`);
         if (lb.me.dailyRank) parts.push(`today #${lb.me.dailyRank}`);
         if (lb.me.weeklyRank) parts.push(`week #${lb.me.weeklyRank}`);
         if (lb.me.allTimeRank) parts.push(`all-time #${lb.me.allTimeRank}`);
@@ -297,12 +336,14 @@ export class Menu extends Phaser.Scene {
       };
 
       let active = 0;
+      const tabGap = 8;
+      const tabW = (pw - 60 - tabGap * (tabs.length - 1)) / tabs.length;
       const tabButtons = tabs.map((tab, i) => {
         const btn = makeButton(
           this,
-          -pw / 2 + 78 + (i * (pw - 130)) / 2.2,
+          -pw / 2 + 30 + tabW / 2 + i * (tabW + tabGap),
           -ph / 2 + 80,
-          (pw - 90) / 3.3,
+          tabW,
           38 * s,
           tab.label,
           () => {
@@ -310,7 +351,7 @@ export class Menu extends Phaser.Scene {
             renderRows(tabs[i]!.lines.slice(0, 10));
             tabButtons.forEach((b, j) => b.container.setAlpha(j === active ? 1 : 0.55));
           },
-          { color: PALETTE.uiPanelLight, textColor: '#ffffff', fontSize: 14 * s }
+          { color: PALETTE.uiPanelLight, textColor: '#ffffff', fontSize: Math.min(14 * s, tabW / 5.2) }
         );
         panel.add(btn.container);
         return btn;

@@ -32,11 +32,32 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/reset-all"
+      },
+      {
+        "label": "Ghost Rally: post yesterday's recap",
+        "description": "Posts the Daily Rally podium recap without waiting for the scheduler",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/recap-now"
       }
     ]
   },
   "triggers": {
     "onAppInstall": "/internal/triggers/on-app-install"
+  },
+  "scheduler": {
+    "tasks": {
+      "daily-recap": {
+        "endpoint": "/internal/scheduler/daily-recap",
+        "cron": "5 0 * * *"
+      }
+    }
+  },
+  "permissions": {
+    "journeys": true,
+    "reddit": {
+      "asUser": ["SUBMIT_COMMENT", "SUBSCRIBE_TO_SUBREDDIT"]
+    }
   },
   "scripts": {
     "build": "vite build",

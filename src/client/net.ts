@@ -1,6 +1,8 @@
 import type {
+  BragResponse,
   FinishRequest,
   FinishResponse,
+  SubscribeResponse,
   GhostsResponse,
   InitResponse,
   LeaderboardResponse,
@@ -39,3 +41,8 @@ export const submitFinish = (body: FinishRequest): Promise<FinishResponse> =>
 export const fetchLeaderboard = (): Promise<LeaderboardResponse> => request('/api/leaderboard');
 
 export const fetchNextTrack = (): Promise<NextTrackResponse> => request('/api/tracks/next');
+
+export const postBrag = (arena: 'post' | 'daily'): Promise<BragResponse> =>
+  post('/api/brag', { arena });
+
+export const postSubscribe = (): Promise<SubscribeResponse> => post('/api/subscribe', {});

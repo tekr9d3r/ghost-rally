@@ -8,6 +8,10 @@ export const keys = {
   pbGhost: (postId: string, user: string) => `t:${postId}:pb:${user}`,
   times: (postId: string) => `t:${postId}:times`,
   attempts: (postId: string) => `t:${postId}:attempts`,
+  /** Stickied "post your times" anchor comment id, per post. */
+  anchor: (postId: string) => `t:${postId}:anchor`,
+  /** Dedup flag so the daily recap posts only once per day. */
+  recapDone: (day: string) => `recap:${day}`,
   // Daily rally
   dailyRecord: (day: string) => `daily:${day}:record`,
   dailyGhost: (day: string) => `daily:${day}:ghost`,

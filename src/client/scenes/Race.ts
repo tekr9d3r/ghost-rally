@@ -7,9 +7,11 @@ import { buildTerrain, buildTerrainBodies, drawTerrain, drawTrackDecor, type Ter
 import { PALETTE } from '../textures';
 import { textStyle, toast } from '../ui';
 import { engineStart, engineStop, engineUpdate, sfx, unlockAudio } from '../sfx';
-import { navigateTo } from '@devvit/web/client';
+import { navigateTo, showShareSheet } from '@devvit/web/client';
 import { controlLayout, inRect, type ControlLayout } from '../controls';
-import type { Hud, HudInfo, PanelSpec } from './Hud';
+import { postBrag, postSubscribe } from '../net';
+import { journeyEnd, journeyProgress, journeyStart, track as trackEvent } from '../analytics';
+import type { Hud, HudInfo, PanelSpec, PanelButtonSpec } from './Hud';
 
 export type EditorState = {
   nodes: number[];
@@ -343,6 +345,7 @@ export class Race extends Phaser.Scene {
         if (label === 'GO!') {
           sfx.goBeep();
           this.state = 'racing';
+          if (this.params.arena !== 'test') journeyStart();
         } else {
           sfx.countBeep();
         }
@@ -579,6 +582,7 @@ export class Race extends Phaser.Scene {
   private crash(): void {
     if (this.state !== 'racing') return;
     this.state = 'crashed';
+    trackEvent('crash', this.params.arena);
     sfx.crash();
     this.cameras.main.shake(350, 0.012);
     this.cameras.main.flash(180, 255, 80, 40);
@@ -599,6 +603,7 @@ export class Race extends Phaser.Scene {
     if (this.state !== 'racing') return;
     this.state = 'finished';
     const timeMs = Math.floor(this.raceTime);
+    if (this.params.arena !== 'test') journeyProgress(1, 'race_finished');
     sfx.finish();
 
     // slow-mo + confetti
@@ -673,16 +678,80 @@ export class Race extends Phaser.Scene {
       titleColor,
       big: formatMs(timeMs),
       lines,
+      social: this.buildSocialRow(timeMs, res),
       buttons: [
         {
           label: '↻  RETRY',
-          onClick: () => this.restart(),
+          onClick: () => {
+            trackEvent('retry', this.params.arena);
+            this.restart();
+          },
         },
         { label: '🎲  RACE ANOTHER TRACK', onClick: () => void this.gotoNext() },
         { label: '🏠  MENU', style: 'dim', onClick: () => this.exitToMenu() },
       ],
     };
     this.hud()?.showPanel(spec);
+  }
+
+  /** Share / brag / join — the policy-safe virality row. */
+  private buildSocialRow(timeMs: number, res: FinishResponse | null): PanelButtonSpec[] {
+    const username = this.params.init.username;
+    const arena = this.params.arena as 'post' | 'daily';
+    const row: PanelButtonSpec[] = [];
+
+    row.push({
+      label: '📣 SHARE',
+      onClick: () => {
+        trackEvent('share', arena);
+        const rec = this.params.ghosts?.top[0];
+        const target = rec ? formatMs(rec.timeMs) : formatMs(timeMs);
+        void showShareSheet({
+          title: 'Ghost Rally',
+          text: `Think you can beat ${target} on ${this.params.track.name}? 👻🏁`,
+        }).then(
+          () => this.hudToast('Challenge shared! 📣', PALETTE.textGood),
+          () => this.hudToast('Could not open share sheet', PALETTE.textBad)
+        );
+      },
+    });
+
+    if (username && res && !res.practice) {
+      row.push({
+        label: '💬 BRAG',
+        onClick: () => {
+          trackEvent('brag', arena);
+          void postBrag(arena).then(
+            () => this.hudToast('Time posted in the comments 💬', PALETTE.textGood),
+            (e: unknown) =>
+              this.hudToast(e instanceof Error ? e.message : 'Could not post comment', PALETTE.textBad)
+          );
+        },
+      });
+    }
+
+    if (username && !this.params.init.joined) {
+      row.push({
+        label: '➕ JOIN',
+        onClick: () => {
+          trackEvent('join_subreddit', arena);
+          void postSubscribe().then(
+            () => {
+              this.params.init.joined = true;
+              this.hudToast('Welcome to the rally! 🏁', PALETTE.textGood);
+            },
+            () => this.hudToast('Could not subscribe', PALETTE.textBad)
+          );
+        },
+      });
+    }
+
+    return row;
+  }
+
+  private hudToast(message: string, color: string): void {
+    const hud = this.hud();
+    if (hud) toast(hud, message, color);
   }
 
   private showTestResults(timeMs: number, ghost: { timeMs: number; fps: number; frames: number[] }): void {
@@ -736,6 +805,8 @@ export class Race extends Phaser.Scene {
   }
 
   private async gotoNext(): Promise<void> {
+    trackEvent('next_track', this.params.arena);
+    journeyEnd(true, Math.floor(this.raceTime));
     try {
       const next = await fetchNextTrack();
       if (next.url) {
@@ -795,6 +866,7 @@ export class Race extends Phaser.Scene {
   }
 
   private exitToMenu(): void {
+    journeyEnd(this.state === 'finished', Math.floor(this.raceTime));
     engineStop();
     this.matter.world.engine.timing.timeScale = 1;
     this.stopHud();

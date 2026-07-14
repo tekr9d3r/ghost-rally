@@ -49,6 +49,8 @@ export type InitResponse = {
   username: string | null;
   player: PlayerStats;
   day: string;
+  /** Whether this user already tapped "join the subreddit". */
+  joined?: boolean;
   /** Track post only. */
   track?: Track;
   record?: GhostMeta | null;
@@ -106,13 +108,28 @@ export type LeaderboardResponse = {
   weekly: LeaderboardRow[];
   allTime: LeaderboardRow[];
   daily: LeaderboardRow[];
+  /** Present when viewing a track post: top-10 all-time on this track. */
+  track?: LeaderboardRow[];
   me: {
     weeklyRank: number | null;
     allTimeRank: number | null;
     dailyRank: number | null;
+    trackRank?: number | null;
   };
   weekKey: string;
   day: string;
+};
+
+export type BragRequest = {
+  arena: 'post' | 'daily';
+};
+
+export type BragResponse = {
+  status: 'ok';
+};
+
+export type SubscribeResponse = {
+  status: 'ok';
 };
 
 export type NextTrackResponse = {

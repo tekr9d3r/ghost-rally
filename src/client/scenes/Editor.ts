@@ -17,6 +17,7 @@ import {
 import { addBackground } from '../bg';
 import { showPublishModal, setBusy } from '../dom';
 import { publishTrack } from '../net';
+import { track as trackEvent } from '../analytics';
 import { buildTerrain, drawTerrain, drawTrackDecor, type TerrainData } from '../terrain';
 import { PALETTE } from '../textures';
 import { makeButton, restartOnResize, textStyle, toast, type Button } from '../ui';
@@ -397,6 +398,7 @@ export class Editor extends Phaser.Scene {
   }
 
   private startTest(): void {
+    trackEvent('test_drive', `${this.nodes.length} nodes`);
     this.scene.start('Race', {
       track: this.currentTrack(),
       arena: 'test',
@@ -427,6 +429,7 @@ export class Editor extends Phaser.Scene {
         ghost: this.tested.ghost,
       });
       setBusy(false);
+      trackEvent('publish_track', name);
       toast(this, '🎉 Track published! Taking you there…', PALETTE.textGood);
       sfx.record();
       this.time.delayedCall(900, () => navigateTo(res.url));

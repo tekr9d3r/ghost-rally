@@ -2,6 +2,7 @@ import * as Phaser from 'phaser';
 import { generateAllTextures, PALETTE } from '../textures';
 import { textStyle } from '../ui';
 import { fetchInit } from '../net';
+import { appReady } from '../analytics';
 import type { InitResponse } from '../../shared/types';
 
 export class Boot extends Phaser.Scene {
@@ -24,6 +25,7 @@ export class Boot extends Phaser.Scene {
       try {
         const init: InitResponse = await fetchInit();
         this.registry.set('init', init);
+        appReady();
         this.scene.start('Menu');
       } catch (e) {
         console.error('init failed:', e);

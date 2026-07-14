@@ -1,9 +1,12 @@
 import { Hono } from 'hono';
 import { context, redis, reddit } from '@devvit/web/server';
 import type {
+  BragRequest,
+  BragResponse,
   ErrorResponse,
   FinishRequest,
   FinishResponse,
+  SubscribeResponse,
   Ghost,
   GhostMeta,
   GhostsResponse,
@@ -98,6 +101,9 @@ api.get('/init', async (c) => {
   const username = (await reddit.getCurrentUsername()) ?? null;
   const player = await loadPlayer(username);
   const day = dayKey();
+  const joined = username
+    ? (await redis.hGet(keys.user(username), 'joined')) === '1'
+    : false;
 
   const track = await getJson<Track>(keys.track(postId));
   const kind: PostKind = track ? 'track' : 'hub';
@@ -113,6 +119,7 @@ api.get('/init', async (c) => {
       username,
       player,
       day,
+      joined,
       track,
       record,
       myBestMs: myBest != null ? Number(myBest) : null,
@@ -151,6 +158,7 @@ api.get('/init', async (c) => {
     username,
     player,
     day,
+    joined,
     dailyRecord,
     myDailyBestMs: myDailyBest != null ? Number(myDailyBest) : null,
     dailyPlayers: dailyPlayers ?? 0,
@@ -379,6 +387,75 @@ api.post('/run/finish', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// BRAG: comment your time, as the user, threaded under a pinned anchor
+// ---------------------------------------------------------------------------
+
+api.post('/brag', async (c) => {
+  const { postId } = context;
+  const username = (await reddit.getCurrentUsername()) ?? null;
+  if (!username) return c.json(err('Log in to comment your time.'), 403);
+
+  const body = await c.req.json<BragRequest>();
+  const isDaily = body.arena === 'daily';
+  const day = dayKey();
+
+  const timesKey = isDaily ? keys.dailyTimes(day) : keys.times(postId ?? '');
+  const bestRaw = await redis.zScore(timesKey, username);
+  if (bestRaw == null) return c.json(err('Finish a run first!'), 400);
+  const best = Number(bestRaw);
+
+  const targetPost = isDaily ? ((await redis.get(keys.hubPost)) ?? postId) : postId;
+  if (!targetPost) return c.json(err('Missing post context'), 400);
+
+  // Lazily create the pinned "post your times" anchor comment.
+  let anchorId = await redis.get(keys.anchor(targetPost));
+  if (!anchorId) {
+    const anchor = await reddit.submitComment({
+      id: asT3(targetPost),
+      text: '🏁 **Post your times here** — finish a run and tap "Comment my time".',
+    });
+    anchorId = anchor.id;
+    await redis.set(keys.anchor(targetPost), anchorId);
+    try {
+      await anchor.distinguish(true);
+    } catch {
+      // app account isn't a mod here — anchor works unpinned
+    }
+  }
+
+  const label = isDaily ? ` on Daily Rally #${dailyRallyNumber(day)}` : '';
+  try {
+    await reddit.submitComment({
+      id: anchorId as `t1_${string}`,
+      text: `⏱ **${formatMs(best)}**${label} — beat that 👻`,
+      runAs: 'USER',
+    });
+  } catch (e) {
+    console.error('brag comment failed:', e);
+    return c.json(err('Could not post the comment. Try again.'), 500);
+  }
+
+  return c.json<BragResponse>({ status: 'ok' });
+});
+
+// ---------------------------------------------------------------------------
+// SUBSCRIBE to the subreddit
+// ---------------------------------------------------------------------------
+
+api.post('/subscribe', async (c) => {
+  const username = (await reddit.getCurrentUsername()) ?? null;
+  if (!username) return c.json(err('Log in to join.'), 403);
+  try {
+    await reddit.subscribeToCurrentSubreddit();
+    await redis.hSet(keys.user(username), { joined: '1' });
+    return c.json<SubscribeResponse>({ status: 'ok' });
+  } catch (e) {
+    console.error('subscribe failed:', e);
+    return c.json(err('Could not subscribe. Try again.'), 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // LEADERBOARDS
 // ---------------------------------------------------------------------------
 
@@ -386,22 +463,30 @@ const toRows = (zr: { member: string; score: number }[] | undefined): Leaderboar
   (zr ?? []).map((r, i) => ({ member: r.member, score: r.score, rank: i + 1 }));
 
 api.get('/leaderboard', async (c) => {
+  const { postId } = context;
   const username = (await reddit.getCurrentUsername()) ?? null;
   const day = dayKey();
   const wk = weekKey();
 
-  const [weekly, allTime, daily] = await Promise.all([
+  // Is this post a community track? Then include its all-time top-10.
+  const isTrack = postId ? (await redis.get(keys.track(postId))) !== null : false;
+
+  const [weekly, allTime, daily, trackRows] = await Promise.all([
     redis.zRange(keys.lbWeek(wk), 0, 9, { by: 'rank', reverse: true }),
     redis.zRange(keys.lbAll, 0, 9, { by: 'rank', reverse: true }),
     redis.zRange(keys.dailyTimes(day), 0, 9, { by: 'rank' }), // ascending: fastest first
+    isTrack && postId
+      ? redis.zRange(keys.times(postId), 0, 9, { by: 'rank' })
+      : Promise.resolve(undefined),
   ]);
 
   let me: LeaderboardResponse['me'] = { weeklyRank: null, allTimeRank: null, dailyRank: null };
   if (username) {
-    const [wr, ar, dr, wCard, aCard] = await Promise.all([
+    const [wr, ar, dr, tr, wCard, aCard] = await Promise.all([
       redis.zRank(keys.lbWeek(wk), username),
       redis.zRank(keys.lbAll, username),
       redis.zRank(keys.dailyTimes(day), username),
+      isTrack && postId ? redis.zRank(keys.times(postId), username) : Promise.resolve(undefined),
       redis.zCard(keys.lbWeek(wk)),
       redis.zCard(keys.lbAll),
     ]);
@@ -410,6 +495,7 @@ api.get('/leaderboard', async (c) => {
       weeklyRank: wr != null && wCard != null ? wCard - Number(wr) : null,
       allTimeRank: ar != null && aCard != null ? aCard - Number(ar) : null,
       dailyRank: dr != null ? Number(dr) + 1 : null,
+      trackRank: tr != null ? Number(tr) + 1 : null,
     };
   }
 
@@ -417,6 +503,7 @@ api.get('/leaderboard', async (c) => {
     weekly: toRows(weekly),
     allTime: toRows(allTime),
     daily: toRows(daily),
+    ...(trackRows ? { track: toRows(trackRows) } : {}),
     me,
     weekKey: wk,
     day,

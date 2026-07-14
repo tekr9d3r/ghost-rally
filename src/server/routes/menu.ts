@@ -4,8 +4,21 @@ import { redis } from '@devvit/web/server';
 import { ensureHubPost } from '../core/post';
 import { keys } from '../core/keys';
 import { dayKey, weekKey } from '../../shared/track';
+import { postDailyRecap } from './scheduler';
 
 export const menu = new Hono();
+
+/** Manually post yesterday's Daily Rally recap (same handler the cron uses). */
+menu.post('/recap-now', async (c) => {
+  try {
+    const yesterday = dayKey(new Date(Date.now() - 86400000));
+    const result = await postDailyRecap(yesterday);
+    return c.json<UiResponse>({ showToast: result }, 200);
+  } catch (error) {
+    console.error(`Manual recap failed: ${error}`);
+    return c.json<UiResponse>({ showToast: 'Recap failed — check logs' }, 400);
+  }
+});
 
 /**
  * Wipe every time, record, ghost and leaderboard for this installation.
