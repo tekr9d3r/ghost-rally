@@ -31,8 +31,9 @@ const safeBottom = (): number => {
 
 export const controlLayout = (w: number, h: number): ControlLayout => {
   const s = Math.min(Math.max(Math.min(w / 640, h / 640), 0.8), 1.25);
-  const size = 104 * s;
   const gap = 14 * s;
+  // never let the four buttons + margins exceed the screen width (360px Androids)
+  const size = Math.min(104 * s, (w - 16 - 32 * s - 2 * gap) / 4);
   // leave room for the caption text below the buttons + any OS gesture bar
   const cy = h - size / 2 - 34 * s - safeBottom();
   const outer = size / 2 + 16 * s;

@@ -146,7 +146,7 @@ export class Editor extends Phaser.Scene {
   }
 
   private toolbarHeight(): number {
-    return 120;
+    return Phaser.Math.Clamp(this.scale.width / 640, 0.7, 1.15) * 118;
   }
 
   // -------------------------------------------------------------------------
@@ -280,71 +280,92 @@ export class Editor extends Phaser.Scene {
 
   private buildToolbar(): void {
     const w = this.scale.width;
-    const s = Phaser.Math.Clamp(Math.min(w / 640, 1.15), 0.72, 1.15);
+    // scale down further on phones so two rows of controls always fit
+    const s = Phaser.Math.Clamp(w / 640, 0.7, 1.15);
+    const barH = 118 * s;
+    const pad = Math.max(8, 10 * s);
 
     const bar = this.add.graphics().setScrollFactor(0).setDepth(90);
     bar.fillStyle(PALETTE.uiPanel, 0.88);
-    bar.fillRect(0, 0, w, 118 * s);
+    bar.fillRect(0, 0, w, barH);
     bar.lineStyle(2, PALETTE.uiPanelLight, 1);
-    bar.lineBetween(0, 118 * s, w, 118 * s);
+    bar.lineBetween(0, barH, w, barH);
 
     const row1 = 32 * s;
     const row2 = 84 * s;
+    const secondary = { color: PALETTE.uiPanelLight, textColor: '#ffffff' };
+    const place = (b: Button): void => {
+      b.container.setScrollFactor(0).setDepth(100);
+    };
 
-    const back = makeButton(this, 30 * s, row1, 44 * s, 40 * s, '✕', () => this.scene.start('Menu'), {
-      color: PALETTE.uiPanelLight,
-      textColor: '#ffffff',
-    });
-    back.container.setScrollFactor(0).setDepth(100);
+    // --- row 1: ✕ … TEST | PUBLISH (right-anchored) ---
+    const back = makeButton(this, pad + 22 * s, row1, 44 * s, 40 * s, '✕', () => this.scene.start('Menu'), secondary);
+    place(back);
 
-    this.add
-      .text(w / 2, 12 * s, 'TRACK EDITOR', textStyle(15 * s, PALETTE.textDim))
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(100);
+    const pubW = 108 * s;
+    const testW = 92 * s;
+    const pubX = w - pad - pubW / 2;
+    const testX = w - pad - pubW - 10 - testW / 2;
+    this.testBtn = makeButton(this, testX, row1, testW, 44 * s, '▶ TEST', () => this.startTest(), {
+      fontSize: 15 * s,
+    });
+    place(this.testBtn);
+    this.publishBtn = makeButton(this, pubX, row1, pubW, 44 * s, '🚩 PUBLISH', () => void this.publish(), {
+      color: PALETTE.uiGood,
+      fontSize: 13 * s,
+    });
+    place(this.publishBtn);
 
-    // length controls
-    const minus = makeButton(this, w / 2 - 78 * s, row2, 40 * s, 38 * s, '−', () => this.changeLength(-1), {
-      color: PALETTE.uiPanelLight,
-      textColor: '#ffffff',
-    });
-    const plus = makeButton(this, w / 2 + 78 * s, row2, 40 * s, 38 * s, '+', () => this.changeLength(1), {
-      color: PALETTE.uiPanelLight,
-      textColor: '#ffffff',
-    });
+    // title only if there's room between ✕ and TEST
+    const titleSpace = testX - testW / 2 - (pad + 44 * s);
+    if (titleSpace > 110) {
+      this.add
+        .text((pad + 44 * s + testX - testW / 2) / 2, row1, 'TRACK EDITOR', textStyle(13 * s, PALETTE.textDim))
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(100);
+    }
+
+    // --- row 2: BOOST … − length + (right-anchored) ---
+    const boostW = 104 * s;
+    this.boostBtn = makeButton(
+      this,
+      pad + boostW / 2,
+      row2,
+      boostW,
+      38 * s,
+      '🚀 BOOST',
+      () => {
+        this.boostMode = !this.boostMode;
+        this.boostBtn.setLabel(this.boostMode ? '🚀 DONE' : '🚀 BOOST');
+        this.handles.forEach((hd) => hd.setVisible(!this.boostMode));
+        toast(
+          this,
+          this.boostMode ? 'Tap the ground to add/remove boost pads' : 'Boost mode off',
+          PALETTE.textAccent
+        );
+      },
+      { ...secondary, fontSize: 12 * s }
+    );
+    place(this.boostBtn);
+
+    const btnW = 48 * s;
+    const labelW = 70 * s;
+    const plusX = w - pad - btnW / 2;
+    const labelX = plusX - btnW / 2 - 6 - labelW / 2;
+    const minusX = labelX - labelW / 2 - 6 - btnW / 2;
+    const plus = makeButton(this, plusX, row2, btnW, 38 * s, '+', () => this.changeLength(1), secondary);
+    const minus = makeButton(this, minusX, row2, btnW, 38 * s, '−', () => this.changeLength(-1), secondary);
+    place(plus);
+    place(minus);
     this.lengthLabel = this.add
-      .text(w / 2, row2, '', textStyle(15 * s, '#ffffff'))
+      .text(labelX, row2, '', textStyle(14 * s, '#ffffff'))
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(100);
-    minus.container.setScrollFactor(0).setDepth(100);
-    plus.container.setScrollFactor(0).setDepth(100);
-
-    this.boostBtn = makeButton(this, 92 * s, row2, 110 * s, 38 * s, '🚀 BOOST', () => {
-      this.boostMode = !this.boostMode;
-      this.boostBtn.setLabel(this.boostMode ? '🚀 DONE' : '🚀 BOOST');
-      this.handles.forEach((hd) => hd.setVisible(!this.boostMode));
-      toast(
-        this,
-        this.boostMode ? 'Tap the ground to add/remove boost pads' : 'Boost mode off',
-        PALETTE.textAccent
-      );
-    }, { color: PALETTE.uiPanelLight, textColor: '#ffffff', fontSize: 13 * s });
-    this.boostBtn.container.setScrollFactor(0).setDepth(100);
-
-    this.testBtn = makeButton(this, w - 170 * s, row1, 120 * s, 44 * s, '▶ TEST', () => this.startTest(), {
-      fontSize: 16 * s,
-    });
-    this.testBtn.container.setScrollFactor(0).setDepth(100);
-
-    this.publishBtn = makeButton(this, w - 170 * s, row2, 120 * s, 40 * s, '🚩 PUBLISH', () => void this.publish(), {
-      color: PALETTE.uiGood,
-      fontSize: 14 * s,
-    });
-    this.publishBtn.container.setScrollFactor(0).setDepth(100);
 
     this.statusText = this.add
-      .text(w - 62 * s, 116 * s + 8, '', textStyle(12 * s, PALETTE.textDim))
+      .text(w - pad, barH + 8, '', textStyle(11 * s, PALETTE.textDim))
       .setOrigin(1, 0)
       .setScrollFactor(0)
       .setDepth(100);
