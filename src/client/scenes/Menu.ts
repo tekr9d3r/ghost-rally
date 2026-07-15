@@ -74,6 +74,9 @@ export class Menu extends Phaser.Scene {
       const bits: string[] = [];
       if (rec) bits.push(`👑 u/${rec.user}`);
       if (this.initData.myBestMs != null) bits.push(`your best ${formatMs(this.initData.myBestMs)}`);
+      if ((this.initData.attempts ?? 0) > 0) {
+        bits.push(`${this.initData.attempts} run${this.initData.attempts === 1 ? '' : 's'}`);
+      }
       if (bits.length) makeChip(this, cx, heroY + 62 * s, bits.join('  ·  '), 13 * s);
     } else {
       const rallyNo = dailyRallyNumber(this.initData.day);

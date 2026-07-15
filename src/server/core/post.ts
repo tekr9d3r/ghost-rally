@@ -1,6 +1,6 @@
 import { context, reddit, redis, EntrypointHeight } from '@devvit/web/server';
-import type { HubPostData, TrackPostData } from '../../shared/types';
-import { formatMs } from '../../shared/track';
+import type { DailyPostData, HubPostData, TrackPostData } from '../../shared/types';
+import { dailyRallyNumber } from '../../shared/track';
 import { keys } from './keys';
 
 export type T3 = `t3_${string}`;
@@ -58,12 +58,13 @@ export const createTrackPost = async (args: {
     recordUser: args.owner,
     recordMs: args.recordMs,
     attempts: 1,
+    racers: 1,
     length: args.length,
     nodes: args.nodes,
     boosts: args.boosts,
   };
   const post = await reddit.submitCustomPost({
-    title: `🏁 ${args.name} — beat u/${args.owner}'s ${formatMs(args.recordMs)}`,
+    title: `🏁 ${args.name} — think you can beat u/${args.owner}?`,
     entry: 'default',
     postData,
     textFallback: {
@@ -75,6 +76,26 @@ export const createTrackPost = async (args: {
       height: EntrypointHeight.TALL,
     },
   });
+  return { postId: post.id, url: postUrl(post.id) };
+};
+
+/** Create today's pinned daily-rally post (countdown splash card). */
+export const createDailyPost = async (day: string): Promise<{ postId: string; url: string }> => {
+  const postData: DailyPostData = { kind: 'daily', day };
+  const post = await reddit.submitCustomPost({
+    title: `🏁 Daily Rally #${dailyRallyNumber(day)} — catch today's ghost`,
+    entry: 'default',
+    postData,
+    textFallback: {
+      text: 'A new Ghost Rally track drops every day. Open this post on new Reddit or the app to race it!',
+    },
+    styles: {
+      backgroundColor: '#12233AFF',
+      backgroundColorDark: '#0A1626FF',
+      height: EntrypointHeight.TALL,
+    },
+  });
+  await redis.set(keys.dailyPost(day), post.id);
   return { postId: post.id, url: postUrl(post.id) };
 };
 

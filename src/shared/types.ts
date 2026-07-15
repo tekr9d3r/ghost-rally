@@ -56,6 +56,8 @@ export type InitResponse = {
   record?: GhostMeta | null;
   myBestMs?: number | null;
   attempts?: number;
+  /** Unique finishers on this track. */
+  racers?: number;
   /** Hub only. */
   dailyRecord?: GhostMeta | null;
   myDailyBestMs?: number | null;
@@ -150,6 +152,8 @@ export type TrackPostData = {
   recordUser: string | null;
   recordMs: number;
   attempts: number;
+  /** Unique finishers. */
+  racers: number;
   length: number;
   /** Terrain profile for the splash preview (same shape as Track.nodes). */
   nodes: number[];
@@ -158,4 +162,10 @@ export type TrackPostData = {
 
 export type HubPostData = {
   kind: 'hub';
+};
+
+/** postData for the pinned daily-rally post (countdown splash card). */
+export type DailyPostData = {
+  kind: 'daily';
+  day: string;
 };

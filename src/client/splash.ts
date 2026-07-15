@@ -52,22 +52,54 @@ const renderTrackPreview = (nodes: number[], boosts: number[]): void => {
   host.classList.add('visible');
 };
 
-const pd = context.postData as unknown as Partial<TrackPostData> | undefined;
+/** Tick a HH:MM:SS countdown to the next UTC midnight. */
+const startCountdown = (): void => {
+  const el = $('countdown-time');
+  const tick = (): void => {
+    const now = new Date();
+    const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+    let secs = Math.max(0, Math.floor((midnight - now.getTime()) / 1000));
+    const h = Math.floor(secs / 3600);
+    secs %= 3600;
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    el.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+  tick();
+  setInterval(tick, 1000);
+};
 
-if (pd?.kind === 'track' && pd.name) {
+// postData is TrackPostData | HubPostData | DailyPostData — discriminate on `kind`
+const pd = context.postData as unknown as
+  | (Partial<Omit<TrackPostData, 'kind'>> & { kind?: 'track' | 'hub' | 'daily' })
+  | undefined;
+
+if (pd?.kind === 'daily') {
+  // Pinned daily post: today's rally with a live reset countdown.
+  $('kicker').textContent = 'GHOST RALLY · DAILY TRACK';
+  $('headline').textContent = "Catch today's ghost";
+  $('countdown').classList.add('visible');
+  startCountdown();
+  $('cta-label').textContent = '🏁  RACE THE GHOST';
+  $('sub').textContent = "today's ghost is a real redditor · beat their time";
+} else if (pd?.kind === 'track' && pd.name) {
   // Community track post: name, track shape, time to beat. Nothing else.
   $('kicker').style.display = 'none';
   $('headline').textContent = pd.name;
   if (Array.isArray(pd.nodes) && pd.nodes.length > 1) {
     renderTrackPreview(pd.nodes, Array.isArray(pd.boosts) ? pd.boosts : []);
   }
+  const bits: string[] = [];
   if (pd.recordUser && pd.recordMs) {
     $('cta-label').textContent = `🏁  BEAT ${formatMs(pd.recordMs)}`;
-    $('sub').textContent = `👑 u/${pd.recordUser}`;
+    bits.push(`👑 u/${pd.recordUser}`);
   } else {
     $('cta-label').textContent = '🏁  RACE THIS TRACK';
-    $('sub').textContent = 'no record yet — set the first ghost';
+    bits.push('no record yet — set the first ghost');
   }
+  if (pd.attempts && pd.attempts > 1) bits.push(`${pd.attempts} runs`);
+  if (pd.racers && pd.racers > 1) bits.push(`${pd.racers} racers`);
+  $('sub').textContent = bits.join(' · ');
 } else {
   // Hub post: today's rally.
   $('kicker').textContent = 'GHOST RALLY';

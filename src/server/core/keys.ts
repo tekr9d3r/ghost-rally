@@ -12,6 +12,10 @@ export const keys = {
   anchor: (postId: string) => `t:${postId}:anchor`,
   /** Dedup flag so the daily recap posts only once per day. */
   recapDone: (day: string) => `recap:${day}`,
+  /** Dedup flag for the fresh-tracks digest. */
+  digestDone: (day: string) => `digest:${day}`,
+  /** The pinned daily-rally post for a given day. */
+  dailyPost: (day: string) => `daily:${day}:post`,
   // Daily rally
   dailyRecord: (day: string) => `daily:${day}:record`,
   dailyGhost: (day: string) => `daily:${day}:ghost`,

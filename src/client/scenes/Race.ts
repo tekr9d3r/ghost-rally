@@ -655,21 +655,20 @@ export class Race extends Phaser.Scene {
     if (res?.tookRecord) sfx.record();
     else if (res?.newPB) sfx.pb();
 
+    // one line: how you stack up against the record
     const lines: { text: string; color: string }[] = [];
-    if (res) {
-      if (res.tookRecord && res.dethroned) {
-        lines.push({ text: `you dethroned u/${res.dethroned} 😈`, color: PALETTE.textAccent });
-      } else if (!res.tookRecord) {
-        lines.push({ text: `record: ${formatMs(res.recordMs)}`, color: PALETTE.textDim });
-      }
-      if (res.rpEarned > 0) {
-        const mult = res.multiplier > 1 ? `  (×${res.multiplier.toFixed(1)} streak 🔥)` : '';
-        lines.push({ text: `+${res.rpEarned} RP${mult}`, color: PALETTE.textGood });
-      }
-      if (res.practice) lines.push({ text: 'your own track — practice pay only', color: PALETTE.textDim });
-    } else if (!username) {
-      lines.push({ text: 'log in to save times & earn RP', color: PALETTE.textDim });
-    } else if (submitError) {
+    if (res?.tookRecord) {
+      lines.push({
+        text: res.dethroned ? `you dethroned u/${res.dethroned} 😈` : '👑 you hold the record',
+        color: PALETTE.textAccent,
+      });
+    } else if (res && res.recordMs > 0) {
+      const diff = timeMs - res.recordMs;
+      lines.push({
+        text: `👑 ${formatMs(res.recordMs)}  ·  you +${(diff / 1000).toFixed(2)}s`,
+        color: PALETTE.textDim,
+      });
+    } else if (submitError && username) {
       lines.push({ text: `⚠ time not saved: ${submitError}`, color: PALETTE.textBad });
     }
 
@@ -687,8 +686,7 @@ export class Race extends Phaser.Scene {
             this.restart();
           },
         },
-        { label: '🎲  RACE ANOTHER TRACK', onClick: () => void this.gotoNext() },
-        { label: '🏠  MENU', style: 'dim', onClick: () => this.exitToMenu() },
+        { label: '🎲  TRY ANOTHER TRACK', onClick: () => void this.gotoNext() },
       ],
     };
     this.hud()?.showPanel(spec);

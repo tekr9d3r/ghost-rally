@@ -242,6 +242,30 @@ body {
   line-height: 1.12;
 }
 
+/* daily post: countdown until the track resets */
+.countdown {
+  display: none;
+  margin: 2px auto 18px;
+}
+.countdown.visible {
+  display: block;
+}
+.countdown-label {
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 3px;
+  color: #aab4d4;
+  margin-bottom: 4px;
+}
+.countdown-time {
+  font-family: 'Courier New', ui-monospace, monospace;
+  font-size: clamp(28px, 7vw, 40px);
+  font-weight: bold;
+  color: #ffffff;
+  text-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+  letter-spacing: 2px;
+}
+
 /* the published track's actual elevation profile */
 .track-preview {
   display: none;

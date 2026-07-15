@@ -109,10 +109,11 @@ api.get('/init', async (c) => {
   const kind: PostKind = track ? 'track' : 'hub';
 
   if (kind === 'track' && track) {
-    const [record, attemptsRaw, myBest] = await Promise.all([
+    const [record, attemptsRaw, myBest, racers] = await Promise.all([
       getJson<GhostMeta>(keys.record(postId)),
       redis.get(keys.attempts(postId)),
       username ? redis.zScore(keys.times(postId), username) : Promise.resolve(undefined),
+      redis.zCard(keys.times(postId)),
     ]);
     return c.json<InitResponse>({
       kind,
@@ -124,6 +125,7 @@ api.get('/init', async (c) => {
       record,
       myBestMs: myBest != null ? Number(myBest) : null,
       attempts: parseInt(attemptsRaw ?? '0') || 0,
+      racers: racers ?? 0,
     });
   }
 
@@ -358,6 +360,7 @@ api.post('/run/finish', async (c) => {
     const currentRecord = tookRecord
       ? { user: username, timeMs: body.timeMs }
       : (record ?? { user: track.owner, timeMs: body.timeMs });
+    const racers = (await redis.zCard(keys.times(postId))) ?? 0;
     const pd: TrackPostData = {
       kind: 'track',
       name: track.name,
@@ -365,6 +368,7 @@ api.post('/run/finish', async (c) => {
       recordUser: currentRecord.user,
       recordMs: currentRecord.timeMs,
       attempts,
+      racers,
       length: trackLength(track.nodes.length, track.dx),
       nodes: track.nodes,
       boosts: track.boosts,

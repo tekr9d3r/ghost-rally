@@ -34,8 +34,8 @@
         "endpoint": "/internal/menu/reset-all"
       },
       {
-        "label": "Ghost Rally: post yesterday's recap",
-        "description": "Posts the Daily Rally podium recap without waiting for the scheduler",
+        "label": "Ghost Rally: run daily tick now",
+        "description": "Posts yesterday's recap + fresh-tracks digest and creates today's pinned daily post",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/recap-now"
