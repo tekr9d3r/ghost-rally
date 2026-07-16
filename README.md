@@ -2,20 +2,32 @@
 
 **Race your community. Steal the record. Become the ghost.**
 
-Ghost Rally is a physics racing game built for Reddit with [Devvit Web](https://developers.reddit.com/docs) and [Phaser](https://phaser.io). Every track is a Reddit post, every record holder haunts the track as a live ghost replay — with their username floating over it — until someone dethrones them.
+Ghost Rally is a physics racing game built for Reddit with [Devvit Web](https://developers.reddit.com/docs) and [Phaser](https://phaser.io). Every track is a Reddit post, and every record is a real redditor's replay haunting the track — username floating overhead — until someone dethrones them.
+
+**▶ Play it: [r/GhostRally](https://www.reddit.com/r/GhostRally/)** · [App listing](https://developers.reddit.com/apps/ghost-rally)
 
 ## The hook
 
-1. **You never race alone.** Every run, the track record holder's ghost races beside you (plus your own PB ghost). Beating the record makes *your* replay the ghost everyone else races — and posts a comment announcing who you dethroned. The dethroned player has a very personal reason to come back.
-2. **Daily Rally.** A new procedurally-generated track every day (same for everyone), with its own leaderboard and record ghost. Daily streaks multiply your Rally Points up to ×2.
-3. **The community builds the game.** Players sculpt tracks in the built-in editor (drag terrain handles, drop boost pads), must prove them completable with a test run, and publish them — each track becomes a new interactive post in the subreddit, with the creator's test run as the first record to beat.
+1. **You never race alone.** Every run features the track's podium — the top-3 replays (👑🥈🥉) plus your own personal best — racing beside you as named ghosts. Beat the record and *your* replay becomes the ghost everyone hunts, and the app posts a comment announcing exactly who you dethroned.
+2. **Daily Rally.** A new track every midnight UTC, generated deterministically from the date itself — everyone on Earth races the same one. It gets its own pinned post with a live countdown, a daily leaderboard, and a morning results post crowning the podium. Daily streaks multiply your Rally Points up to ×2.
+3. **The community builds the game.** Players sculpt tracks in the built-in editor (drag terrain handles, drop boost pads), must prove them beatable with a test run — which becomes the track's first record — and publish. Each track becomes a new interactive post whose preview card shows the real elevation profile, the time to beat, and its run count. A nightly digest features every track built the day before.
+
+## Social by design
+
+All growth is player-driven and policy-compliant — every action is an explicit button:
+
+- **Share** — challenge friends via Reddit's native share sheet ("Think you can beat 9.56s?")
+- **Brag** — post your time as a comment, threaded under a pinned times thread
+- **Join** — one-tap subscribe so you never miss a daily rally
+- **Dethronement comments** — record steals are announced publicly on the track's post
 
 ## How to play
 
-- **Drive:** hold the right side / →/W to accelerate, left side / ←/S to brake & reverse. In the air, gas/brake tilts the buggy — land clean or wreck.
-- **Boost pads** fling you forward. **Checkered flag** stops the clock.
-- **Beat the ghost** 👑 to take the track record and earn RP.
-- **Build:** hub post → BUILD A TRACK → sculpt, test, publish.
+- **Gas** → / D (or right pedal) · **Brake/reverse** ← / A (or left pedal)
+- **Lean forward** ↑ / W · **Lean back** ↓ / S — land your flips or wreck
+- **Boost pads** fling you forward; the **checkered flag** stops the clock
+- Beat the 👑 ghost to take the record; check **RANKS** for track/daily/weekly/all-time boards
+- **Build:** menu → BUILD → sculpt, test drive, publish
 
 ## Scoring (Rally Points)
 
@@ -28,13 +40,11 @@ Ghost Rally is a physics racing game built for Reddit with [Devvit Web](https://
 | Publish a track | 25 |
 | Daily streak multiplier | up to ×2 |
 
-Weekly and all-time leaderboards; daily boards rank by fastest time.
-
 ## Tech
 
-- **Devvit Web** — Hono server on the Devvit serverless runtime, Redis for tracks/ghosts/leaderboards/streaks, Reddit API for post creation and record-steal comments, `postData` for instant feed splash cards.
-- **Phaser 4 + Matter.js** — soft-suspension buggy rig, terrain built from Catmull-Rom splines, ghost replays recorded at 30 fps and interpolated on playback.
-- **Zero assets** — every sprite is generated procedurally at boot (Graphics/Canvas), and all sound is synthesized live with WebAudio (engine loop included).
+- **Devvit Web** — Hono server on the Devvit serverless runtime; Redis sorted sets for leaderboards, podiums and replays; Reddit API for track posts, dethronement comments, scheduled daily posts (pinned countdown card, podium recap, fresh-tracks digest); `postData`-driven feed splash cards; Devvit Journeys analytics.
+- **Phaser 4 + Matter.js** — rear-wheel-drive buggy with constraint suspension, terrain from Catmull-Rom splines rasterized into one deterministic code path (ghosts replay against the exact same ground), 30 fps ghost recording with interpolated playback, and **fixed 60 Hz physics stepping** so records are fair across 60/90/120 Hz devices.
+- **Zero asset files** — every sprite is drawn procedurally at boot, and all audio (engine loop included) is synthesized live with WebAudio.
 
 ## Development
 
@@ -44,3 +54,5 @@ npm run dev      # playtest on your test subreddit
 npm run deploy   # build + upload
 npm run launch   # deploy + publish for review
 ```
+
+Built for Reddit's [Games with a Hook](https://redditgameswithahook.devpost.com/) hackathon, 2026.
