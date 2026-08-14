@@ -1,12 +1,23 @@
 import { Hono } from 'hono';
 import { context, redis, reddit } from '@devvit/web/server';
-import type { Track } from '../../shared/types';
-import { dailyRallyNumber, dayKey, formatMs } from '../../shared/track';
+import type { GhostMeta, Track } from '../../shared/types';
+import { dailyRallyNumber, dayKey, formatMs, hashString, mulberry32, weekKey } from '../../shared/track';
+import { COUNTRIES } from '../../shared/countries';
 import { keys } from '../core/keys';
 import { asT3, createDailyPost } from '../core/post';
 
 const postLink = (postId: string): string =>
   `https://www.reddit.com/r/${context.subredditName}/comments/${postId.replace(/^t3_/, '')}`;
+
+const getJson = async <T>(key: string): Promise<T | null> => {
+  const raw = await redis.get(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Post yesterday's Daily Rally podium as a regular post (app account).
@@ -73,6 +84,61 @@ export const postFreshTracksDigest = async (day: string): Promise<string> => {
   return `Digest posted (${entries.length} ${plural}).`;
 };
 
+/**
+ * Post a weekly reminder pointing players at the Country Challenge — the
+ * feature is easy to forget about since it's a menu button, not a post feed.
+ * Prioritizes unclaimed countries ("be the first champion"); fills any
+ * remaining slots with a deterministic weekly-seeded pick from claimed ones
+ * so the rotation is predictable, not random. Idempotent per ISO week.
+ */
+const SPOTLIGHT_COUNT = 4;
+
+export const postCountrySpotlight = async (week: string): Promise<string> => {
+  if (await redis.get(keys.countrySpotlightDone(week))) {
+    return `Country spotlight for ${week} was already posted.`;
+  }
+
+  const statuses = await Promise.all(
+    COUNTRIES.map(async (country) => ({
+      country,
+      champion: await getJson<GhostMeta>(keys.countryRecord(country.code)),
+    }))
+  );
+  if (statuses.length === 0) return 'No countries configured — nothing to post.';
+
+  // Shuffle both pools (not just the claimed fallback) — early on, every
+  // country is unclaimed, and without this the spotlight would repeat the
+  // same handful of countries every week purely by array order.
+  const rng = mulberry32(hashString(`country-spotlight:${week}`));
+  const shuffle = <T,>(arr: T[]): T[] => [...arr].sort(() => rng() - 0.5);
+  const unclaimed = shuffle(statuses.filter((s) => !s.champion));
+  const claimed = shuffle(statuses.filter((s) => s.champion));
+  const featured = [...unclaimed, ...claimed].slice(0, SPOTLIGHT_COUNT);
+
+  const lines = featured
+    .map(({ country, champion }) =>
+      champion
+        ? `${country.flag} **${country.name}** — 👑 u/${champion.user} · ${formatMs(champion.timeMs)}, still open to steal`
+        : `${country.flag} **${country.name}** — no champion yet, be the first`
+    )
+    .join('\n');
+
+  const hubId = await redis.get(keys.hubPost);
+  const hubLink = hubId
+    ? `\n\n👻 [Open the hub post](${postLink(hubId)}) → 🌍 COUNTRY to race one.`
+    : '';
+
+  await reddit.submitPost({
+    subredditName: context.subredditName,
+    title: `🌍 This week's country spotlight — ${featured.length} nations worth a shot`,
+    text: `New week, new nations to conquer. A few worth your time:\n\n${lines}${hubLink}`,
+  });
+
+  await redis.set(keys.countrySpotlightDone(week), '1');
+  await redis.expire(keys.countrySpotlightDone(week), 14 * 86400);
+  return `Country spotlight for ${week} posted (${featured.length} countries).`;
+};
+
 /** Create + pin today's daily post, unpin yesterday's. Idempotent per day. */
 export const rotateDailyPost = async (): Promise<string> => {
   const today = dayKey();
@@ -125,5 +191,15 @@ export const scheduler = new Hono();
 scheduler.post('/daily-recap', async (c) => {
   const result = await runDailyTick();
   console.log(`daily-tick: ${result}`);
+  return c.json({ status: 'ok' });
+});
+
+scheduler.post('/country-spotlight', async (c) => {
+  try {
+    const result = await postCountrySpotlight(weekKey());
+    console.log(`country-spotlight: ${result}`);
+  } catch (e) {
+    console.error('country-spotlight failed:', e);
+  }
   return c.json({ status: 'ok' });
 });

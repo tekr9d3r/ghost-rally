@@ -1,5 +1,8 @@
 import type {
+  Arena,
   BragResponse,
+  CampaignResponse,
+  CountryResponse,
   FinishRequest,
   FinishResponse,
   SubscribeResponse,
@@ -29,8 +32,10 @@ const post = <T>(url: string, data: unknown): Promise<T> =>
 
 export const fetchInit = (): Promise<InitResponse> => request('/api/init');
 
-export const fetchGhosts = (arena: 'post' | 'daily'): Promise<GhostsResponse> =>
-  request(`/api/ghosts?arena=${arena}`);
+export const fetchGhosts = (arena: Arena, id?: string): Promise<GhostsResponse> => {
+  const param = arena === 'campaign' ? 'stage' : arena === 'country' ? 'country' : null;
+  return request(`/api/ghosts?arena=${arena}${param && id ? `&${param}=${id}` : ''}`);
+};
 
 export const publishTrack = (body: PublishRequest): Promise<PublishResponse> =>
   post('/api/track/publish', body);
@@ -42,7 +47,13 @@ export const fetchLeaderboard = (): Promise<LeaderboardResponse> => request('/ap
 
 export const fetchNextTrack = (): Promise<NextTrackResponse> => request('/api/tracks/next');
 
-export const postBrag = (arena: 'post' | 'daily'): Promise<BragResponse> =>
-  post('/api/brag', { arena });
+export const postBrag = (arena: Arena, id?: string): Promise<BragResponse> => {
+  const key = arena === 'campaign' ? 'stageId' : arena === 'country' ? 'countryCode' : null;
+  return post('/api/brag', { arena, ...(key && id ? { [key]: id } : {}) });
+};
 
 export const postSubscribe = (): Promise<SubscribeResponse> => post('/api/subscribe', {});
+
+export const fetchCampaign = (): Promise<CampaignResponse> => request('/api/campaign');
+
+export const fetchCountries = (): Promise<CountryResponse> => request('/api/countries');

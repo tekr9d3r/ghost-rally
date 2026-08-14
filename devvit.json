@@ -39,6 +39,13 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/recap-now"
+      },
+      {
+        "label": "Ghost Rally: post country spotlight now",
+        "description": "Posts this week's Country Challenge spotlight without waiting for the scheduler",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/country-spotlight-now"
       }
     ]
   },
@@ -50,6 +57,10 @@
       "daily-recap": {
         "endpoint": "/internal/scheduler/daily-recap",
         "cron": "5 0 * * *"
+      },
+      "country-spotlight": {
+        "endpoint": "/internal/scheduler/country-spotlight",
+        "cron": "0 18 * * 1"
       }
     }
   },

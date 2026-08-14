@@ -29,8 +29,8 @@ body {
   display: block;
 }
 
-/* ---- publish modal ---- */
-#publish-modal {
+/* ---- modals (publish, word generator) ---- */
+.modal-overlay {
   display: none;
   position: fixed;
   inset: 0;
@@ -41,7 +41,7 @@ body {
   padding: 20px;
 }
 
-#publish-modal.open {
+.modal-overlay.open {
   display: flex;
 }
 

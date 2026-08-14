@@ -315,6 +315,57 @@ const makePedals = (scene: Phaser.Scene): void => {
   drawLeanPedal('pedalLeanBack', false); // ▼ lean back (nose up / backflip)
 };
 
+const makeMedal = (scene: Phaser.Scene, key: string, color: number, ringColor: number): void => {
+  const r = 26;
+  const gr = g(scene);
+  gr.fillStyle(0x000000, 0.25);
+  gr.fillCircle(r, r + 2, r);
+  gr.fillStyle(color, 1);
+  gr.fillCircle(r, r, r);
+  gr.lineStyle(3, ringColor, 1);
+  gr.strokeCircle(r, r, r - 2);
+  // simple 5-point star
+  gr.fillStyle(0xffffff, 0.9);
+  gr.beginPath();
+  const spikes = 5;
+  const outerR = r * 0.5;
+  const innerR = r * 0.22;
+  for (let i = 0; i < spikes * 2; i++) {
+    const rad = i % 2 === 0 ? outerR : innerR;
+    const ang = (Math.PI / spikes) * i - Math.PI / 2;
+    const px = r + Math.cos(ang) * rad;
+    const py = r + Math.sin(ang) * rad;
+    if (i === 0) gr.moveTo(px, py);
+    else gr.lineTo(px, py);
+  }
+  gr.closePath();
+  gr.fillPath();
+  gr.generateTexture(key, r * 2, r * 2 + 3);
+  gr.destroy();
+};
+
+const makeLock = (scene: Phaser.Scene): void => {
+  const gr = g(scene);
+  gr.lineStyle(6, 0x8a93b0, 1);
+  gr.beginPath();
+  gr.arc(20, 18, 11, Math.PI, 0, false);
+  gr.strokePath();
+  gr.fillStyle(0x8a93b0, 1);
+  gr.fillRoundedRect(4, 18, 32, 22, 6);
+  gr.fillStyle(0x4a5372, 1);
+  gr.fillCircle(20, 28, 4);
+  gr.generateTexture('medalLocked', 40, 44);
+  gr.destroy();
+};
+
+/** Medal badges match the podium ghost tints used in Race.ts (gold/silver/bronze). */
+const makeMedals = (scene: Phaser.Scene): void => {
+  makeMedal(scene, 'medalGold', PALETTE.ghostRecord, 0xb8892a);
+  makeMedal(scene, 'medalSilver', 0xdde4f2, 0x9aa4c2);
+  makeMedal(scene, 'medalBronze', 0xdb9a66, 0x9a643a);
+  makeLock(scene);
+};
+
 export const generateAllTextures = (scene: Phaser.Scene): void => {
   makeSky(scene);
   makeHill(scene, 'hillFar', 1600, 260, PALETTE.hillFar, 0.7);
@@ -327,4 +378,5 @@ export const generateAllTextures = (scene: Phaser.Scene): void => {
   makeParticles(scene);
   makeHandle(scene);
   makePedals(scene);
+  makeMedals(scene);
 };

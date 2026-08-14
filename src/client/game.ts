@@ -5,6 +5,8 @@ import { Race } from './scenes/Race';
 import { Editor } from './scenes/Editor';
 import { Hud } from './scenes/Hud';
 import { Bg } from './scenes/Bg';
+import { Campaign } from './scenes/Campaign';
+import { Country } from './scenes/Country';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -27,7 +29,7 @@ const config: Phaser.Types.Core.GameConfig = {
   input: {
     activePointers: 3,
   },
-  scene: [Boot, Menu, Race, Editor, Hud, Bg],
+  scene: [Boot, Menu, Race, Editor, Hud, Bg, Campaign, Country],
 };
 
 /** Global game handle — used by DOM overlays to pause keyboard capture. */

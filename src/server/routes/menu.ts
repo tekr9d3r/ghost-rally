@@ -4,7 +4,7 @@ import { redis } from '@devvit/web/server';
 import { ensureHubPost } from '../core/post';
 import { keys } from '../core/keys';
 import { dayKey, weekKey } from '../../shared/track';
-import { runDailyTick } from './scheduler';
+import { postCountrySpotlight, runDailyTick } from './scheduler';
 
 export const menu = new Hono();
 
@@ -16,6 +16,17 @@ menu.post('/recap-now', async (c) => {
   } catch (error) {
     console.error(`Manual daily tick failed: ${error}`);
     return c.json<UiResponse>({ showToast: 'Daily tick failed — check logs' }, 400);
+  }
+});
+
+/** Manually post this week's Country Challenge spotlight. */
+menu.post('/country-spotlight-now', async (c) => {
+  try {
+    const result = await postCountrySpotlight(weekKey());
+    return c.json<UiResponse>({ showToast: result.slice(0, 250) }, 200);
+  } catch (error) {
+    console.error(`Manual country spotlight failed: ${error}`);
+    return c.json<UiResponse>({ showToast: 'Country spotlight failed — check logs' }, 400);
   }
 });
 

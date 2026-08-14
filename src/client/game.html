@@ -12,7 +12,7 @@
   <body>
     <div id="game-container"></div>
 
-    <div id="publish-modal">
+    <div id="publish-modal" class="modal-overlay">
       <div class="modal-card">
         <h2>🚩 Publish your track</h2>
         <p id="publish-sub"></p>
@@ -20,6 +20,18 @@
         <div class="modal-buttons">
           <button id="publish-cancel" class="btn-secondary">Cancel</button>
           <button id="publish-ok" class="btn-primary">Publish as a post</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="word-modal" class="modal-overlay">
+      <div class="modal-card">
+        <h2>🔤 Build from a word</h2>
+        <p id="word-sub">Any word becomes a track — same word, same track, every time.</p>
+        <input id="word-input" type="text" placeholder="Type a word…" autocomplete="off" />
+        <div class="modal-buttons">
+          <button id="word-cancel" class="btn-secondary">Cancel</button>
+          <button id="word-ok" class="btn-primary">Generate</button>
         </div>
       </div>
     </div>

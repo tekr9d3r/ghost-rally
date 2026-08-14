@@ -15,8 +15,9 @@ import {
   formatMs,
 } from '../../shared/track';
 import { addBackground } from '../bg';
-import { showPublishModal, setBusy } from '../dom';
+import { showPublishModal, showWordPrompt, setBusy } from '../dom';
 import { publishTrack } from '../net';
+import { generateWordTrack } from '../../shared/wordtrack';
 import { track as trackEvent } from '../analytics';
 import { buildTerrain, drawTerrain, drawTrackDecor, type TerrainData } from '../terrain';
 import { PALETTE } from '../textures';
@@ -54,6 +55,7 @@ export class Editor extends Phaser.Scene {
   private publishBtn!: Button;
   private testBtn!: Button;
   private boostBtn!: Button;
+  private wordBtn!: Button;
   private lengthLabel!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
 
@@ -267,6 +269,27 @@ export class Editor extends Phaser.Scene {
     sfx.click();
   }
 
+  /** "Make course generating easier": type any word, get a starting track. */
+  private async generateFromWord(): Promise<void> {
+    const word = await showWordPrompt();
+    if (!word) return;
+    const result = generateWordTrack(word);
+    if (!result) {
+      toast(this, 'Could not generate a track from that word.', PALETTE.textBad);
+      return;
+    }
+    trackEvent('word_track', word);
+    this.nodes = result.nodes;
+    this.boosts = result.boosts;
+    this.trackName = result.suggestedName;
+    this.tested = null;
+    this.dirty = true;
+    this.rebuildHandles();
+    this.updateToolbar();
+    toast(this, `🔤 "${result.suggestedName}" generated — test it or tweak it!`, PALETTE.textGood);
+    sfx.click();
+  }
+
   private invalidateTest(): void {
     if (this.tested) {
       this.tested = null;
@@ -349,6 +372,19 @@ export class Editor extends Phaser.Scene {
       { ...secondary, fontSize: 12 * s }
     );
     place(this.boostBtn);
+
+    const wordW = 84 * s;
+    this.wordBtn = makeButton(
+      this,
+      pad + boostW + 10 + wordW / 2,
+      row2,
+      wordW,
+      38 * s,
+      '🔤 WORD',
+      () => void this.generateFromWord(),
+      { ...secondary, fontSize: 12 * s }
+    );
+    place(this.wordBtn);
 
     const btnW = 48 * s;
     const labelW = 70 * s;

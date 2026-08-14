@@ -1,4 +1,5 @@
 import { MAX_NAME_LEN } from '../shared/track';
+import { MAX_WORD_LEN, validateWord } from '../shared/wordtrack';
 import { gameRef } from './game';
 
 /**
@@ -43,6 +44,54 @@ export const showPublishModal = (initialName: string, recordLabel: string): Prom
     okBtn.onclick = () => {
       const v = input.value.trim();
       if (v.length < 3) {
+        input.classList.add('error');
+        setTimeout(() => input.classList.remove('error'), 600);
+        return;
+      }
+      cleanup();
+      resolve(v);
+    };
+    cancelBtn.onclick = () => {
+      cleanup();
+      resolve(null);
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') okBtn.click();
+      if (e.key === 'Escape') cancelBtn.click();
+    };
+  });
+};
+
+/**
+ * Word-generator dialog. Resolves the validated word, or null if cancelled.
+ */
+export const showWordPrompt = (): Promise<string | null> => {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('word-modal') as HTMLDivElement | null;
+    const input = document.getElementById('word-input') as HTMLInputElement | null;
+    const okBtn = document.getElementById('word-ok') as HTMLButtonElement | null;
+    const cancelBtn = document.getElementById('word-cancel') as HTMLButtonElement | null;
+    if (!modal || !input || !okBtn || !cancelBtn) {
+      resolve(null);
+      return;
+    }
+    modal.classList.add('open');
+    setGameKeyboard(false);
+    input.value = '';
+    input.maxLength = MAX_WORD_LEN;
+    input.focus();
+
+    const cleanup = (): void => {
+      modal.classList.remove('open');
+      setGameKeyboard(true);
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      input.onkeydown = null;
+    };
+    okBtn.onclick = () => {
+      const v = input.value.trim();
+      const error = validateWord(v);
+      if (error) {
         input.classList.add('error');
         setTimeout(() => input.classList.remove('error'), 600);
         return;

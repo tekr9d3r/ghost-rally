@@ -51,6 +51,8 @@ export type InitResponse = {
   day: string;
   /** Whether this user already tapped "join the subreddit". */
   joined?: boolean;
+  /** Whether the player has any campaign progress (drives the hub hero button). */
+  campaignStarted?: boolean;
   /** Track post only. */
   track?: Track;
   record?: GhostMeta | null;
@@ -88,12 +90,23 @@ export type PublishResponse = {
   url: string;
 };
 
+/**
+ * 'post' = the track living in this post; 'daily' = today's generated rally;
+ * 'campaign' = a fixed stage; 'country' = a fixed country-seeded track.
+ */
+export type Arena = 'post' | 'daily' | 'campaign' | 'country';
+
 export type FinishRequest = {
-  /** 'post' = the track living in this post; 'daily' = today's generated rally. */
-  arena: 'post' | 'daily';
+  arena: Arena;
+  /** Required when arena === 'campaign'. */
+  stageId?: string;
+  /** Required when arena === 'country'. */
+  countryCode?: string;
   timeMs: number;
   ghost: { timeMs: number; fps: number; frames: number[] };
 };
+
+export type MedalTier = 'bronze' | 'silver' | 'gold';
 
 export type FinishResponse = {
   rpEarned: number;
@@ -104,6 +117,10 @@ export type FinishResponse = {
   streak: number;
   multiplier: number;
   practice: boolean;
+  /** Campaign only: medal earned by this run (if any), the next unlocked stage, and whether this run just finished the whole campaign. */
+  medal?: MedalTier | null;
+  nextStageId?: string | null;
+  campaignJustCompleted?: boolean;
 };
 
 export type LeaderboardResponse = {
@@ -112,18 +129,23 @@ export type LeaderboardResponse = {
   daily: LeaderboardRow[];
   /** Present when viewing a track post: top-10 all-time on this track. */
   track?: LeaderboardRow[];
+  /** Top-10 aggregate campaign times (players who finished every stage). */
+  campaign?: LeaderboardRow[];
   me: {
     weeklyRank: number | null;
     allTimeRank: number | null;
     dailyRank: number | null;
     trackRank?: number | null;
+    campaignRank?: number | null;
   };
   weekKey: string;
   day: string;
 };
 
 export type BragRequest = {
-  arena: 'post' | 'daily';
+  arena: Arena;
+  stageId?: string;
+  countryCode?: string;
 };
 
 export type BragResponse = {
@@ -168,4 +190,37 @@ export type HubPostData = {
 export type DailyPostData = {
   kind: 'daily';
   day: string;
+};
+
+/** One campaign stage, with the current player's progress on it. */
+export type CampaignStageStatus = {
+  id: string;
+  name: string;
+  locked: boolean;
+  bestMs: number | null;
+  medal: MedalTier | null;
+  gold: number;
+  silver: number;
+  bronze: number;
+};
+
+export type CampaignResponse = {
+  stages: CampaignStageStatus[];
+  completedAll: boolean;
+  /** Sum of best times across every stage, once completedAll is true. */
+  totalMs: number | null;
+};
+
+/** One country, with its current champion and the player's own best. */
+export type CountryStatus = {
+  code: string;
+  name: string;
+  flag: string;
+  championUser: string | null;
+  championMs: number | null;
+  myBestMs: number | null;
+};
+
+export type CountryResponse = {
+  countries: CountryStatus[];
 };

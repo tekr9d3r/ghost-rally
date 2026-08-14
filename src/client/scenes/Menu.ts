@@ -29,6 +29,8 @@ export class Menu extends Phaser.Scene {
     const cx = w / 2;
     const s = Phaser.Math.Clamp(Math.min(w / 640, h / 640), 0.72, 1.25);
     const isTrack = this.initData.kind === 'track' && !!this.initData.track;
+    // Campaign mode is temporarily hidden from navigation (code kept for later).
+    const showCampaignHero = false;
 
     // --- Title ---
     const titleY = h * 0.15;
@@ -78,6 +80,11 @@ export class Menu extends Phaser.Scene {
         bits.push(`${this.initData.attempts} run${this.initData.attempts === 1 ? '' : 's'}`);
       }
       if (bits.length) makeChip(this, cx, heroY + 62 * s, bits.join('  ·  '), 13 * s);
+    } else if (showCampaignHero) {
+      makeButton(this, cx, heroY, bw, 72 * s, '🎓  START CAMPAIGN', () => this.goToCampaign(), {
+        fontSize: 24 * s,
+      });
+      makeChip(this, cx, heroY + 62 * s, 'learn the ropes at your own pace', 13 * s);
     } else {
       const rallyNo = dailyRallyNumber(this.initData.day);
       makeButton(this, cx, heroY, bw, 72 * s, `🏁  DAILY RALLY  #${rallyNo}`, () => void this.startDaily(), {
@@ -106,6 +113,13 @@ export class Menu extends Phaser.Scene {
       },
       { icon: '🏆', label: 'RANKS', cb: () => void this.showLeaderboard() },
     ];
+    // Campaign mode is temporarily hidden from navigation (code kept for later):
+    // if (!isTrack && !showCampaignHero) {
+    //   links.push({ icon: '🎓', label: 'CAMPAIGN', cb: () => this.goToCampaign() });
+    // }
+    if (!isTrack) {
+      links.push({ icon: '🌍', label: 'COUNTRY', cb: () => this.goToCountry() });
+    }
     if (isTrack) {
       links.push({ icon: '📣', label: 'SHARE', cb: () => this.shareTrack() });
     }
@@ -229,6 +243,16 @@ export class Menu extends Phaser.Scene {
     this.scene.start('Race', { track, arena: 'daily', ghosts, init: this.initData });
   }
 
+  private goToCampaign(): void {
+    trackEvent('campaign_open', this.initData.kind);
+    this.scene.start('Campaign', { init: this.initData });
+  }
+
+  private goToCountry(): void {
+    trackEvent('country_open', this.initData.kind);
+    this.scene.start('Country', { init: this.initData });
+  }
+
   private shareTrack(): void {
     trackEvent('share', 'menu');
     const t = this.initData.track;
@@ -328,6 +352,13 @@ export class Menu extends Phaser.Scene {
             ? lb.allTime.map((r) => `${r.rank}. u/${r.member} — ${Math.round(r.score)} RP`)
             : ['Be the first on the board!'],
         },
+        // Campaign mode is temporarily hidden from navigation (code kept for later):
+        // {
+        //   label: 'CAMPAIGN',
+        //   lines: lb.campaign?.length
+        //     ? lb.campaign.map((r) => `${r.rank}. u/${r.member} — ${formatMs(r.score)}`)
+        //     : ['Nobody has cleared the campaign yet.'],
+        // },
       ];
       const meLine = (): string => {
         const parts: string[] = [];

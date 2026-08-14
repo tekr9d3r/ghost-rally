@@ -1,8 +1,13 @@
 import { Hono } from 'hono';
 import { context, redis, reddit } from '@devvit/web/server';
 import type {
+  Arena,
   BragRequest,
   BragResponse,
+  CampaignResponse,
+  CampaignStageStatus,
+  CountryResponse,
+  CountryStatus,
   ErrorResponse,
   FinishRequest,
   FinishResponse,
@@ -13,6 +18,7 @@ import type {
   InitResponse,
   LeaderboardResponse,
   LeaderboardRow,
+  MedalTier,
   NextTrackResponse,
   PlayerStats,
   PostKind,
@@ -31,6 +37,15 @@ import {
   validateGhostSubmission,
   MAX_NAME_LEN,
 } from '../../shared/track';
+import {
+  CAMPAIGN_STAGES,
+  campaignStage,
+  medalForTime,
+  medalThresholds,
+  nextCampaignStage,
+  type CampaignStage,
+} from '../../shared/campaign';
+import { COUNTRIES, countryByCode, type Country } from '../../shared/countries';
 import { keys } from '../core/keys';
 import { asT3, createTrackPost, updateTrackPostData } from '../core/post';
 
@@ -155,12 +170,17 @@ api.get('/init', async (c) => {
     }
   }
 
+  const campaignStarted = username
+    ? Object.keys((await redis.hGetAll(keys.campaignProgress(username))) ?? {}).length > 0
+    : false;
+
   return c.json<InitResponse>({
     kind: 'hub',
     username,
     player,
     day,
     joined,
+    campaignStarted,
     dailyRecord,
     myDailyBestMs: myDailyBest != null ? Number(myDailyBest) : null,
     dailyPlayers: dailyPlayers ?? 0,
@@ -175,13 +195,36 @@ api.get('/init', async (c) => {
 
 api.get('/ghosts', async (c) => {
   const { postId } = context;
-  const arena = c.req.query('arena') === 'daily' ? 'daily' : 'post';
+  const arenaParam = c.req.query('arena');
+  const arena: Arena =
+    arenaParam === 'daily'
+      ? 'daily'
+      : arenaParam === 'campaign'
+        ? 'campaign'
+        : arenaParam === 'country'
+          ? 'country'
+          : 'post';
+  const stageId = c.req.query('stage') ?? '';
+  const countryCode = c.req.query('country') ?? '';
   const username = (await reddit.getCurrentUsername()) ?? null;
   const day = dayKey();
 
-  const timesKey = arena === 'daily' ? keys.dailyTimes(day) : keys.times(postId ?? '');
+  const timesKey =
+    arena === 'daily'
+      ? keys.dailyTimes(day)
+      : arena === 'campaign'
+        ? keys.campaignTimes(stageId)
+        : arena === 'country'
+          ? keys.countryTimes(countryCode)
+          : keys.times(postId ?? '');
   const pbKeyFor = (user: string): string =>
-    arena === 'daily' ? keys.dailyPbGhost(day, user) : keys.pbGhost(postId ?? '', user);
+    arena === 'daily'
+      ? keys.dailyPbGhost(day, user)
+      : arena === 'campaign'
+        ? keys.campaignPbGhost(stageId, user)
+        : arena === 'country'
+          ? keys.countryPbGhost(countryCode, user)
+          : keys.pbGhost(postId ?? '', user);
 
   // Podium: top-3 fastest players, each with their PB replay.
   const podium = (await redis.zRange(timesKey, 0, 2, { by: 'rank' })) ?? [];
@@ -252,7 +295,7 @@ api.post('/track/publish', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// FINISH a run (post track or daily rally)
+// FINISH a run (post track, daily rally, or campaign stage)
 // ---------------------------------------------------------------------------
 
 api.post('/run/finish', async (c) => {
@@ -279,20 +322,55 @@ api.post('/run/finish', async (c) => {
 
   const day = dayKey();
   const isDaily = body.arena === 'daily';
+  const isCampaign = body.arena === 'campaign';
+  const isCountry = body.arena === 'country';
+  const isPost = body.arena === 'post';
 
   let track: Track | null = null;
-  if (!isDaily) {
+  let stage: CampaignStage | undefined;
+  let country: Country | undefined;
+  if (isPost) {
     if (!postId) return c.json(err('Missing post context'), 400);
     track = await getJson<Track>(keys.track(postId));
     if (!track) return c.json(err('Track not found'), 404);
+  } else if (isCampaign) {
+    stage = campaignStage(body.stageId ?? '');
+    if (!stage) return c.json(err('Unknown campaign stage.'), 400);
+  } else if (isCountry) {
+    country = countryByCode(body.countryCode ?? '');
+    if (!country) return c.json(err('Unknown country.'), 400);
   }
 
-  const timesKey = isDaily ? keys.dailyTimes(day) : keys.times(postId ?? '');
-  const recordKey = isDaily ? keys.dailyRecord(day) : keys.record(postId ?? '');
-  const ghostKey = isDaily ? keys.dailyGhost(day) : keys.recordGhost(postId ?? '');
-  const pbKey = isDaily ? keys.dailyPbGhost(day, username) : keys.pbGhost(postId ?? '', username);
+  const timesKey = isDaily
+    ? keys.dailyTimes(day)
+    : isCampaign
+      ? keys.campaignTimes(stage!.id)
+      : isCountry
+        ? keys.countryTimes(country!.code)
+        : keys.times(postId ?? '');
+  const recordKey = isDaily
+    ? keys.dailyRecord(day)
+    : isCampaign
+      ? keys.campaignRecord(stage!.id)
+      : isCountry
+        ? keys.countryRecord(country!.code)
+        : keys.record(postId ?? '');
+  const ghostKey = isDaily
+    ? keys.dailyGhost(day)
+    : isCampaign
+      ? keys.campaignGhost(stage!.id)
+      : isCountry
+        ? keys.countryGhost(country!.code)
+        : keys.recordGhost(postId ?? '');
+  const pbKey = isDaily
+    ? keys.dailyPbGhost(day, username)
+    : isCampaign
+      ? keys.campaignPbGhost(stage!.id, username)
+      : isCountry
+        ? keys.countryPbGhost(country!.code, username)
+        : keys.pbGhost(postId ?? '', username);
 
-  const isOwner = !isDaily && track?.owner === username;
+  const isOwner = isPost && track?.owner === username;
   const streak = await touchStreak(username);
   const multiplier = streakMultiplier(streak);
 
@@ -324,15 +402,18 @@ api.post('/run/finish', async (c) => {
       await redis.hIncrBy(keys.user(username), 'records', 1);
       // Announce the steal in the post's comments (best effort).
       try {
-        const where = isDaily ? await redis.get(keys.hubPost) : postId;
+        const where = isPost ? postId : await redis.get(keys.hubPost);
         if (where) {
-          const label = isDaily
-            ? `Daily Rally #${dailyRallyNumber(day)}`
-            : (track?.name ?? 'this track');
-          await reddit.submitComment({
-            id: asT3(where),
-            text: `🏁 **New record on ${label}!** u/${username} — **${formatMs(body.timeMs)}** (dethroned u/${dethroned}, ${formatMs(record!.timeMs)})`,
-          });
+          const text = isCountry
+            ? `🌍 **New champion of ${country!.name}!** u/${username} — **${formatMs(body.timeMs)}** (dethroned u/${dethroned}, ${formatMs(record!.timeMs)})`
+            : `🏁 **New record on ${
+                isDaily
+                  ? `Daily Rally #${dailyRallyNumber(day)}`
+                  : isCampaign
+                    ? `Campaign: ${stage!.name}`
+                    : (track?.name ?? 'this track')
+              }!** u/${username} — **${formatMs(body.timeMs)}** (dethroned u/${dethroned}, ${formatMs(record!.timeMs)})`;
+          await reddit.submitComment({ id: asT3(where), text });
         }
       } catch (e) {
         console.error('Failed to post record comment:', e);
@@ -340,23 +421,54 @@ api.post('/run/finish', async (c) => {
     }
   }
 
-  // --- Attempts / hot-track counters ---
+  // --- Attempts / hot-track counters (community tracks only) ---
   let attempts = 0;
-  if (!isDaily && postId) {
+  if (isPost && postId) {
     attempts = await redis.incrBy(keys.attempts(postId), 1);
     await redis.zIncrBy(keys.tracksHot(weekKey()), postId, 1);
   }
   await redis.hIncrBy(keys.user(username), 'finishes', 1);
 
+  // --- Campaign progress: per-stage best, sequential unlock, full-clear bonus ---
+  let medal: MedalTier | null = null;
+  let nextStageId: string | null = null;
+  let campaignJustCompleted = false;
+  if (isCampaign && stage) {
+    medal = medalForTime(stage, body.timeMs);
+    const next = nextCampaignStage(stage.id);
+    nextStageId = next ? next.id : null;
+
+    const progKey = keys.campaignProgress(username);
+    const prevStageRaw = await redis.hGet(progKey, `stage:${stage.id}`);
+    const prevStageBest = prevStageRaw != null ? parseInt(prevStageRaw) : null;
+    if (prevStageBest === null || body.timeMs < prevStageBest) {
+      await redis.hSet(progKey, { [`stage:${stage.id}`]: String(body.timeMs) });
+    }
+
+    const allProg = await redis.hGetAll(progKey);
+    const allDone = CAMPAIGN_STAGES.every((s) => allProg?.[`stage:${s.id}`] != null);
+    if (allDone && allProg?.completedBonus !== '1') {
+      campaignJustCompleted = true;
+      await redis.hSet(progKey, { completedBonus: '1' });
+      await awardRp(username, 150);
+      const total = CAMPAIGN_STAGES.reduce(
+        (sum, s) => sum + (parseInt(allProg[`stage:${s.id}`] ?? '0') || 0),
+        0
+      );
+      await redis.zAdd(keys.campaignTotal, { member: username, score: total });
+    }
+  }
+
   // --- RP ---
-  const base = isDaily ? 20 : isOwner ? 5 : 15;
+  const base = isDaily ? 20 : isCampaign ? 10 : isCountry ? 20 : isOwner ? 5 : 15;
   const pbBonus = newPB && prevBest !== null ? 10 : 0;
   const recordBonus = tookRecord && !isOwner ? 50 : tookRecord ? 10 : 0;
-  const rpEarned = Math.round((base + pbBonus + recordBonus) * multiplier);
+  const medalBonus = medal === 'gold' ? 20 : medal === 'silver' ? 10 : medal === 'bronze' ? 5 : 0;
+  const rpEarned = Math.round((base + pbBonus + recordBonus + medalBonus) * multiplier);
   await awardRp(username, rpEarned);
 
-  // --- Keep the splash card fresh ---
-  if (!isDaily && postId && track && (tookRecord || attempts % 5 === 0)) {
+  // --- Keep the splash card fresh (community tracks only) ---
+  if (isPost && postId && track && (tookRecord || attempts % 5 === 0)) {
     const currentRecord = tookRecord
       ? { user: username, timeMs: body.timeMs }
       : (record ?? { user: track.owner, timeMs: body.timeMs });
@@ -387,7 +499,71 @@ api.post('/run/finish', async (c) => {
     streak,
     multiplier,
     practice: isOwner,
+    ...(isCampaign ? { medal, nextStageId, campaignJustCompleted } : {}),
   });
+});
+
+// ---------------------------------------------------------------------------
+// CAMPAIGN: stage roster + this player's progress
+// ---------------------------------------------------------------------------
+
+api.get('/campaign', async (c) => {
+  const username = (await reddit.getCurrentUsername()) ?? null;
+  const progress = username ? await redis.hGetAll(keys.campaignProgress(username)) : {};
+
+  const stages: CampaignStageStatus[] = [];
+  let unlocked = true; // stage 0 always unlocked
+  let allDone = true;
+  let total = 0;
+  for (const stage of CAMPAIGN_STAGES) {
+    const bestRaw = progress?.[`stage:${stage.id}`];
+    const bestMs = bestRaw != null ? parseInt(bestRaw) : null;
+    if (bestMs == null) allDone = false;
+    else total += bestMs;
+    const { gold, silver, bronze } = medalThresholds(stage);
+    stages.push({
+      id: stage.id,
+      name: stage.name,
+      locked: !unlocked,
+      bestMs,
+      medal: bestMs != null ? medalForTime(stage, bestMs) : null,
+      gold,
+      silver,
+      bronze,
+    });
+    unlocked = bestMs != null;
+  }
+
+  return c.json<CampaignResponse>({
+    stages,
+    completedAll: allDone,
+    totalMs: allDone ? total : null,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// COUNTRY CHALLENGE: roster + champions + this player's bests
+// ---------------------------------------------------------------------------
+
+api.get('/countries', async (c) => {
+  const username = (await reddit.getCurrentUsername()) ?? null;
+  const countries: CountryStatus[] = await Promise.all(
+    COUNTRIES.map(async (country) => {
+      const [champion, myBest] = await Promise.all([
+        getJson<GhostMeta>(keys.countryRecord(country.code)),
+        username ? redis.zScore(keys.countryTimes(country.code), username) : Promise.resolve(undefined),
+      ]);
+      return {
+        code: country.code,
+        name: country.name,
+        flag: country.flag,
+        championUser: champion?.user ?? null,
+        championMs: champion?.timeMs ?? null,
+        myBestMs: myBest != null ? Number(myBest) : null,
+      };
+    })
+  );
+  return c.json<CountryResponse>({ countries });
 });
 
 // ---------------------------------------------------------------------------
@@ -401,14 +577,33 @@ api.post('/brag', async (c) => {
 
   const body = await c.req.json<BragRequest>();
   const isDaily = body.arena === 'daily';
+  const isCampaign = body.arena === 'campaign';
+  const isCountry = body.arena === 'country';
   const day = dayKey();
 
-  const timesKey = isDaily ? keys.dailyTimes(day) : keys.times(postId ?? '');
+  let stage: CampaignStage | undefined;
+  let country: Country | undefined;
+  if (isCampaign) {
+    stage = campaignStage(body.stageId ?? '');
+    if (!stage) return c.json(err('Unknown campaign stage.'), 400);
+  } else if (isCountry) {
+    country = countryByCode(body.countryCode ?? '');
+    if (!country) return c.json(err('Unknown country.'), 400);
+  }
+
+  const timesKey = isDaily
+    ? keys.dailyTimes(day)
+    : isCampaign
+      ? keys.campaignTimes(stage!.id)
+      : isCountry
+        ? keys.countryTimes(country!.code)
+        : keys.times(postId ?? '');
   const bestRaw = await redis.zScore(timesKey, username);
   if (bestRaw == null) return c.json(err('Finish a run first!'), 400);
   const best = Number(bestRaw);
 
-  const targetPost = isDaily ? ((await redis.get(keys.hubPost)) ?? postId) : postId;
+  const targetPost =
+    isDaily || isCampaign || isCountry ? ((await redis.get(keys.hubPost)) ?? postId) : postId;
   if (!targetPost) return c.json(err('Missing post context'), 400);
 
   // Lazily create the pinned "post your times" anchor comment.
@@ -427,7 +622,13 @@ api.post('/brag', async (c) => {
     }
   }
 
-  const label = isDaily ? ` on Daily Rally #${dailyRallyNumber(day)}` : '';
+  const label = isDaily
+    ? ` on Daily Rally #${dailyRallyNumber(day)}`
+    : isCampaign
+      ? ` on Campaign: ${stage!.name}`
+      : isCountry
+        ? ` for ${country!.flag} ${country!.name}`
+        : '';
   try {
     await reddit.submitComment({
       id: anchorId as `t1_${string}`,
@@ -475,22 +676,24 @@ api.get('/leaderboard', async (c) => {
   // Is this post a community track? Then include its all-time top-10.
   const isTrack = postId ? (await redis.get(keys.track(postId))) !== null : false;
 
-  const [weekly, allTime, daily, trackRows] = await Promise.all([
+  const [weekly, allTime, daily, trackRows, campaignRows] = await Promise.all([
     redis.zRange(keys.lbWeek(wk), 0, 9, { by: 'rank', reverse: true }),
     redis.zRange(keys.lbAll, 0, 9, { by: 'rank', reverse: true }),
     redis.zRange(keys.dailyTimes(day), 0, 9, { by: 'rank' }), // ascending: fastest first
     isTrack && postId
       ? redis.zRange(keys.times(postId), 0, 9, { by: 'rank' })
       : Promise.resolve(undefined),
+    redis.zRange(keys.campaignTotal, 0, 9, { by: 'rank' }), // ascending: lowest total first
   ]);
 
   let me: LeaderboardResponse['me'] = { weeklyRank: null, allTimeRank: null, dailyRank: null };
   if (username) {
-    const [wr, ar, dr, tr, wCard, aCard] = await Promise.all([
+    const [wr, ar, dr, tr, cr, wCard, aCard] = await Promise.all([
       redis.zRank(keys.lbWeek(wk), username),
       redis.zRank(keys.lbAll, username),
       redis.zRank(keys.dailyTimes(day), username),
       isTrack && postId ? redis.zRank(keys.times(postId), username) : Promise.resolve(undefined),
+      redis.zRank(keys.campaignTotal, username),
       redis.zCard(keys.lbWeek(wk)),
       redis.zCard(keys.lbAll),
     ]);
@@ -500,6 +703,7 @@ api.get('/leaderboard', async (c) => {
       allTimeRank: ar != null && aCard != null ? aCard - Number(ar) : null,
       dailyRank: dr != null ? Number(dr) + 1 : null,
       trackRank: tr != null ? Number(tr) + 1 : null,
+      campaignRank: cr != null ? Number(cr) + 1 : null,
     };
   }
 
@@ -508,6 +712,7 @@ api.get('/leaderboard', async (c) => {
     allTime: toRows(allTime),
     daily: toRows(daily),
     ...(trackRows ? { track: toRows(trackRows) } : {}),
+    campaign: toRows(campaignRows),
     me,
     weekKey: wk,
     day,

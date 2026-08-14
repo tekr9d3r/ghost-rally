@@ -136,24 +136,55 @@ export const terrainYAt = (poly: { x: number; y: number }[], x: number): number 
   return a.y + (b.y - a.y) * t;
 };
 
-/** Generate the seeded Daily Rally track for a given UTC day. */
-export const generateDailyTrack = (day: string): Track => {
-  const rng = mulberry32(hashString(`ghost-rally:${day}`));
-  const count = 36 + Math.floor(rng() * 10); // 36–45 nodes
+/** Tunable knobs for the seeded terrain generator (used by daily rally + campaign stages). */
+export type DifficultyParams = {
+  minNodes: number;
+  /** Exclusive upper bound: node count = minNodes + floor(rng() * (maxNodes - minNodes)). */
+  maxNodes: number;
+  /** Multiplies terrain amplitude/noise. 1 = daily-rally intensity, lower = gentler. */
+  ampScale: number;
+  boostMin: number;
+  /** Exclusive upper bound, same pattern as maxNodes. */
+  boostMax: number;
+  /** Whether to carve one deep valley partway through the track. */
+  bigDip: boolean;
+};
+
+/** Reproduces the original (pre-campaign) daily-rally tuning exactly. */
+const DAILY_PARAMS: DifficultyParams = {
+  minNodes: 36,
+  maxNodes: 46,
+  ampScale: 1,
+  boostMin: 2,
+  boostMax: 5,
+  bigDip: true,
+};
+
+/**
+ * Core deterministic terrain generator. Shared by the daily rally and campaign
+ * stages — same seed + params always produces the same track, forever.
+ */
+export const generateSeededTrack = (
+  seed: string,
+  params: DifficultyParams,
+  meta: { name: string; owner: string; day: string }
+): Track => {
+  const rng = mulberry32(hashString(seed));
+  const count = params.minNodes + Math.floor(rng() * (params.maxNodes - params.minNodes));
   const nodes: number[] = [];
   // Layered sine waves whose amplitude grows toward the finish.
   const f1 = 0.35 + rng() * 0.25;
   const f2 = 0.9 + rng() * 0.5;
   const p1 = rng() * Math.PI * 2;
   const p2 = rng() * Math.PI * 2;
-  const bigDip = 6 + Math.floor(rng() * (count - 12));
+  const bigDip = params.bigDip ? 6 + Math.floor(rng() * Math.max(1, count - 12)) : -1;
   for (let i = 0; i < count; i++) {
     const ramp = Math.min(1, i / 8); // ease difficulty in
     let y =
-      Math.sin(i * f1 + p1) * 110 * ramp +
-      Math.sin(i * f2 + p2) * 55 * ramp +
-      (rng() - 0.5) * 40 * ramp;
-    if (Math.abs(i - bigDip) <= 1) y += 130; // one big valley
+      Math.sin(i * f1 + p1) * 110 * ramp * params.ampScale +
+      Math.sin(i * f2 + p2) * 55 * ramp * params.ampScale +
+      (rng() - 0.5) * 40 * ramp * params.ampScale;
+    if (bigDip >= 0 && Math.abs(i - bigDip) <= 1) y += 130; // one big valley
     nodes.push(Math.max(MIN_Y, Math.min(MAX_Y, Math.round(y))));
   }
   for (let i = 0; i < FLAT_APRON; i++) {
@@ -161,20 +192,20 @@ export const generateDailyTrack = (day: string): Track => {
     nodes[count - 1 - i] = nodes[count - 1 - FLAT_APRON] ?? 0;
   }
   const boosts: number[] = [];
-  const nBoosts = 2 + Math.floor(rng() * 3);
+  const nBoosts = params.boostMin + Math.floor(rng() * (params.boostMax - params.boostMin));
   for (let i = 0; i < nBoosts; i++) {
     boosts.push(Math.round((5 + rng() * (count - 10)) * NODE_DX));
   }
-  return {
-    v: 1,
+  return { v: 1, name: meta.name, owner: meta.owner, nodes, dx: NODE_DX, boosts, day: meta.day };
+};
+
+/** Generate the seeded Daily Rally track for a given UTC day. */
+export const generateDailyTrack = (day: string): Track =>
+  generateSeededTrack(`ghost-rally:${day}`, DAILY_PARAMS, {
     name: `Daily Rally #${dailyRallyNumber(day)}`,
     owner: 'ghost-rally',
-    nodes,
-    dx: NODE_DX,
-    boosts,
     day,
-  };
-};
+  });
 
 export type TrackValidationError = string;
 

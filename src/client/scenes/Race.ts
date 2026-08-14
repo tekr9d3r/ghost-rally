@@ -1,15 +1,15 @@
 /* global MatterJS */
 import * as Phaser from 'phaser';
-import type { FinishResponse, Ghost, GhostsResponse, InitResponse, Track } from '../../shared/types';
+import type { Arena, FinishResponse, Ghost, GhostsResponse, InitResponse, Track } from '../../shared/types';
 import { GHOST_FPS, MAX_GHOST_NUMBERS, START_X, formatMs, terrainYAt } from '../../shared/track';
-import { submitFinish, fetchNextTrack } from '../net';
+import { firstCampaignStage, generateCampaignTrack } from '../../shared/campaign';
+import { submitFinish, fetchNextTrack, fetchGhosts, postBrag, postSubscribe } from '../net';
 import { buildTerrain, buildTerrainBodies, drawTerrain, drawTrackDecor, type TerrainData } from '../terrain';
 import { PALETTE } from '../textures';
 import { textStyle, toast } from '../ui';
 import { engineStart, engineStop, engineUpdate, sfx, unlockAudio } from '../sfx';
 import { navigateTo, showShareSheet } from '@devvit/web/client';
 import { controlLayout, inRect, type ControlLayout } from '../controls';
-import { postBrag, postSubscribe } from '../net';
 import { journeyEnd, journeyProgress, journeyStart, track as trackEvent } from '../analytics';
 import type { Hud, HudInfo, PanelSpec, PanelButtonSpec } from './Hud';
 
@@ -21,7 +21,11 @@ export type EditorState = {
 
 export type RaceParams = {
   track: Track;
-  arena: 'post' | 'daily' | 'test';
+  arena: Arena | 'test';
+  /** Required when arena === 'campaign'. */
+  stageId?: string;
+  /** Required when arena === 'country'. */
+  countryCode?: string;
   ghosts: GhostsResponse | null;
   init: InitResponse;
   editorState?: EditorState;
@@ -136,10 +140,31 @@ export class Race extends Phaser.Scene {
     const ghosts = this.params.ghosts;
     const medalTints = [PALETTE.ghostRecord, 0xdde4f2, 0xdb9a66];
     const medals = ['👑 ', '🥈 ', '🥉 '];
-    ghosts?.top.slice(0, 3).forEach((g, i) => {
-      this.addGhost(g, medalTints[i]!, medals[i]!);
-    });
-    if (ghosts?.mine) this.addGhost(ghosts.mine, PALETTE.ghostMine, '');
+    if (this.params.arena === 'campaign') {
+      // Beginner-friendly: race yourself first. No ghosts at all on attempt one
+      // (no PB yet); once you have a PB it's the hero, community ghosts fade back.
+      if (ghosts?.mine) {
+        this.addGhost(ghosts.mine, PALETTE.ghostMine, '', {
+          alpha: 0.55,
+          scale: 1,
+          fontSize: 15,
+          labelAlpha: 0.9,
+        });
+        ghosts.top.slice(0, 3).forEach((g, i) => {
+          this.addGhost(g, medalTints[i]!, medals[i]!, {
+            alpha: 0.2,
+            scale: 0.85,
+            fontSize: 10,
+            labelAlpha: 0.4,
+          });
+        });
+      }
+    } else {
+      ghosts?.top.slice(0, 3).forEach((g, i) => {
+        this.addGhost(g, medalTints[i]!, medals[i]!);
+      });
+      if (ghosts?.mine) this.addGhost(ghosts.mine, PALETTE.ghostMine, '');
+    }
 
     // --- Particles ---
     this.dustL = this.add.particles(0, 0, 'dust', {
@@ -323,17 +348,23 @@ export class Race extends Phaser.Scene {
     );
   }
 
-  private addGhost(ghost: Ghost, tint: number, prefix: string): void {
+  private addGhost(
+    ghost: Ghost,
+    tint: number,
+    prefix: string,
+    opts: { alpha?: number; scale?: number; fontSize?: number; labelAlpha?: number } = {}
+  ): void {
     if (!ghost.frames.length) return;
     const sprite = this.add
       .image(ghost.frames[0] ?? START_X, ghost.frames[1] ?? 0, 'ghostBuggyRaw')
       .setTint(tint)
-      .setAlpha(0.42)
+      .setAlpha(opts.alpha ?? 0.42)
+      .setScale(opts.scale ?? 1)
       .setDepth(3);
     const label = this.add
-      .text(0, 0, `${prefix}u/${ghost.user}`, textStyle(13, '#ffffff', 3))
+      .text(0, 0, `${prefix}u/${ghost.user}`, textStyle(opts.fontSize ?? 13, '#ffffff', 3))
       .setOrigin(0.5, 1)
-      .setAlpha(0.75)
+      .setAlpha(opts.labelAlpha ?? 0.75)
       .setDepth(3);
     this.ghostRigs.push({ ghost, sprite, label, finished: false });
   }
@@ -637,7 +668,13 @@ export class Race extends Phaser.Scene {
       let res: FinishResponse | null = null;
       let submitError: string | null = null;
       try {
-        res = await submitFinish({ arena: this.params.arena as 'post' | 'daily', timeMs, ghost });
+        res = await submitFinish({
+          arena: this.params.arena as Arena,
+          ...(this.params.stageId ? { stageId: this.params.stageId } : {}),
+          ...(this.params.countryCode ? { countryCode: this.params.countryCode } : {}),
+          timeMs,
+          ghost,
+        });
       } catch (e) {
         submitError = e instanceof Error ? e.message : 'Could not save your time';
         console.error('finish submit failed', e);
@@ -649,14 +686,30 @@ export class Race extends Phaser.Scene {
 
   private showResults(timeMs: number, res: FinishResponse | null, submitError: string | null = null): void {
     const username = this.params.init.username;
+    const isCampaign = this.params.arena === 'campaign';
 
     const title = res?.tookRecord ? '👑 TRACK RECORD!' : res?.newPB ? '⚡ NEW PERSONAL BEST!' : '🏁 FINISH!';
     const titleColor = res?.tookRecord ? PALETTE.textAccent : res?.newPB ? PALETTE.textGood : '#ffffff';
     if (res?.tookRecord) sfx.record();
     else if (res?.newPB) sfx.pb();
+    else if (isCampaign && res?.medal) sfx.pb();
+
+    const lines: { text: string; color: string }[] = [];
+
+    // campaign: medal earned by this run, self-paced and independent of other players
+    if (isCampaign && res) {
+      const medalLine =
+        res.medal === 'gold'
+          ? '🥇 GOLD MEDAL!'
+          : res.medal === 'silver'
+            ? '🥈 SILVER MEDAL!'
+            : res.medal === 'bronze'
+              ? '🥉 BRONZE MEDAL!'
+              : 'no medal yet — try again';
+      lines.push({ text: medalLine, color: res.medal ? PALETTE.textAccent : PALETTE.textDim });
+    }
 
     // one line: how you stack up against the record
-    const lines: { text: string; color: string }[] = [];
     if (res?.tookRecord) {
       lines.push({
         text: res.dethroned ? `you dethroned u/${res.dethroned} 😈` : '👑 you hold the record',
@@ -672,30 +725,85 @@ export class Race extends Phaser.Scene {
       lines.push({ text: `⚠ time not saved: ${submitError}`, color: PALETTE.textBad });
     }
 
+    // campaign milestone join-subreddit nudges — highest-intent moments only, never repeats
+    if (isCampaign && username && !this.params.init.joined) {
+      if (res?.campaignJustCompleted) {
+        lines.push({ text: 'You cleared the campaign — join r/GhostRally below 🏁', color: PALETTE.textAccent });
+      } else if (res?.medal === 'gold') {
+        lines.push({ text: 'Gold! Join the sub to see how you rank 🥇', color: PALETTE.textAccent });
+      } else if (this.params.stageId === firstCampaignStage().id) {
+        lines.push({ text: "You're in — join r/GhostRally below to keep your streak", color: PALETTE.textAccent });
+      }
+    }
+
+    const buttons: PanelButtonSpec[] = [
+      {
+        label: '↻  RETRY',
+        onClick: () => {
+          trackEvent('retry', this.params.arena);
+          this.restart();
+        },
+      },
+    ];
+    if (isCampaign && res?.nextStageId) {
+      buttons.push({
+        label: '▶  NEXT STAGE',
+        onClick: () => void this.startNextCampaignStage(res.nextStageId!),
+      });
+    } else if (isCampaign) {
+      buttons.push({ label: '🎓  CAMPAIGN MAP', onClick: () => this.goToCampaignMap() });
+    } else if (this.params.arena === 'country') {
+      buttons.push({ label: '🌍  COUNTRY MAP', onClick: () => this.goToCountryMap() });
+    } else {
+      buttons.push({ label: '🎲  TRY ANOTHER TRACK', onClick: () => void this.gotoNext() });
+    }
+
     const spec: PanelSpec = {
       title,
       titleColor,
       big: formatMs(timeMs),
       lines,
       social: this.buildSocialRow(timeMs, res),
-      buttons: [
-        {
-          label: '↻  RETRY',
-          onClick: () => {
-            trackEvent('retry', this.params.arena);
-            this.restart();
-          },
-        },
-        { label: '🎲  TRY ANOTHER TRACK', onClick: () => void this.gotoNext() },
-      ],
+      buttons,
     };
     this.hud()?.showPanel(spec);
+  }
+
+  private async startNextCampaignStage(stageId: string): Promise<void> {
+    trackEvent('campaign_stage_open', stageId);
+    const track = generateCampaignTrack(stageId);
+    if (!track) return;
+    let ghosts: GhostsResponse | null = null;
+    try {
+      ghosts = await fetchGhosts('campaign', stageId);
+    } catch {
+      // race without ghosts rather than blocking
+    }
+    // in-place continuation, like restart(): keep the Hud/Bg overlay scenes alive
+    engineStop();
+    this.matter.world.engine.timing.timeScale = 1;
+    this.hud()?.clearPanel();
+    this.scene.start('Race', { track, arena: 'campaign', stageId, ghosts, init: this.params.init });
+  }
+
+  private goToCampaignMap(): void {
+    engineStop();
+    this.matter.world.engine.timing.timeScale = 1;
+    this.stopHud();
+    this.scene.start('Campaign', { init: this.params.init });
+  }
+
+  private goToCountryMap(): void {
+    engineStop();
+    this.matter.world.engine.timing.timeScale = 1;
+    this.stopHud();
+    this.scene.start('Country', { init: this.params.init });
   }
 
   /** Share / brag / join — the policy-safe virality row. */
   private buildSocialRow(timeMs: number, res: FinishResponse | null): PanelButtonSpec[] {
     const username = this.params.init.username;
-    const arena = this.params.arena as 'post' | 'daily';
+    const arena = this.params.arena as Arena;
     const row: PanelButtonSpec[] = [];
 
     row.push({
@@ -719,7 +827,7 @@ export class Race extends Phaser.Scene {
         label: '💬 BRAG',
         onClick: () => {
           trackEvent('brag', arena);
-          void postBrag(arena).then(
+          void postBrag(arena, this.params.stageId ?? this.params.countryCode).then(
             () => this.hudToast('Time posted in the comments 💬', PALETTE.textGood),
             (e: unknown) =>
               this.hudToast(e instanceof Error ? e.message : 'Could not post comment', PALETTE.textBad)
@@ -877,6 +985,10 @@ export class Race extends Phaser.Scene {
       this.matter.world.engine.timing.timeScale = 1;
       this.stopHud();
       this.scene.start('Editor', { init: this.params.init, editorState: this.params.editorState });
+    } else if (this.params.arena === 'campaign') {
+      this.goToCampaignMap();
+    } else if (this.params.arena === 'country') {
+      this.goToCountryMap();
     } else {
       this.exitToMenu();
     }
